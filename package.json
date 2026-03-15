@@ -1,0 +1,22 @@
+{
+  "name": "yxcode",
+  "version": "1.0.0",
+  "description": "意心Code - Claude Code 可视化交互界面",
+  "type": "module",
+  "main": "server.js",
+  "bin": {
+    "yxcode": "server.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["claude-code", "ai", "ui", "anthropic"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.59",
+    "express": "^4.21.0",
+    "ws": "^8.18.0"
+  }
+}

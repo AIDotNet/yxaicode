@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>意心Code - yxcode</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11/highlight.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg: #0d1117; --bg2: #161b22; --bg3: #21262d;
+  --fg: #e6edf3; --fg2: #8b949e; --accent: #58a6ff;
+  --green: #3fb950; --red: #f85149; --orange: #d29922; --violet: #a371f7; --blue: #58a6ff;
+  --border: #30363d; --radius: 8px;
+}
+body { font-family: -apple-system, 'Segoe UI', sans-serif; background: var(--bg); color: var(--fg); height: 100vh; }
+#app { display: flex; flex-direction: row; height: 100vh; }
+#mainArea { flex:1; display:flex; flex-direction:column; min-width:0; }
+
+/* Header */
+#header { display:flex; align-items:center; justify-content:space-between; padding:8px 16px; background:var(--bg2); border-bottom:1px solid var(--border); gap:12px; flex-wrap:wrap; }
+.header-left { display:flex; align-items:center; gap:8px; }
+.logo { font-size:18px; font-weight:700; color:var(--accent); }
+.version { font-size:12px; color:var(--fg2); }
+.header-center { display:flex; gap:8px; }
+.header-right { display:flex; align-items:center; gap:8px; }
+.cwd-label { font-size:12px; color:var(--fg2); white-space:nowrap; }
+select, #cwdInput { background:var(--bg3); color:var(--fg); border:1px solid var(--border); border-radius:var(--radius); padding:4px 8px; font-size:13px; outline:none; }
+#cwdInput { width:240px; }
+select:focus, #cwdInput:focus { border-color:var(--accent); }
+.status-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.status-dot.online { background:var(--green); }
+.status-dot.offline { background:var(--red); }
+.status-dot.busy { background:var(--orange); animation:pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* Chat */
+#chatArea { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; }
+#messages { flex:1; display:flex; flex-direction:column; gap:12px; }
+
+/* Messages */
+.msg { padding:12px 16px; border-radius:var(--radius); max-width:95%; word-wrap:break-word; }
+.msg.user { background:#1c3a5f; align-self:flex-end; border:1px solid #264d7a; }
+.msg.assistant { background:var(--bg2); align-self:flex-start; border:1px solid var(--border); width:100%; }
+.msg .role { font-size:11px; font-weight:600; color:var(--fg2); margin-bottom:4px; text-transform:uppercase; }
+.msg .content { font-size:14px; line-height:1.6; }
+.msg .content p { margin:.4em 0; }
+.msg .content pre { background:#0d1117; border:1px solid var(--border); border-radius:6px; padding:12px; overflow-x:auto; margin:8px 0; }
+.msg .content code { font-family:'Cascadia Code','Fira Code',monospace; font-size:13px; }
+.msg .content :not(pre)>code { background:var(--bg3); padding:2px 6px; border-radius:4px; }
+.msg .content ul,.msg .content ol { padding-left:1.5em; }
+.msg .content table { border-collapse:collapse; margin:8px 0; }
+.msg .content th,.msg .content td { border:1px solid var(--border); padding:6px 10px; }
+.msg .content blockquote { border-left:3px solid var(--accent); padding-left:12px; color:var(--fg2); margin:8px 0; }
+/* Tool cards - category colors */
+.tool-card { background:var(--bg); border:1px solid var(--border); border-radius:6px; margin:8px 0; overflow:hidden; border-left:3px solid var(--fg2); }
+.tool-card[data-cat="bash"] { border-left-color:var(--green); }
+.tool-card[data-cat="edit"] { border-left-color:var(--orange); }
+.tool-card[data-cat="search"] { border-left-color:var(--fg2); }
+.tool-card[data-cat="todo"],.tool-card[data-cat="task"] { border-left-color:var(--violet); }
+.tool-card[data-cat="question"] { border-left-color:var(--blue); }
+.tool-card[data-cat="agent"] { border-left-color:#bc8cff; }
+.tool-header { display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--bg3); cursor:pointer; font-size:13px; font-weight:600; }
+.tool-header .tool-icon { font-size:14px; }
+.tool-header .tool-name { color:var(--green); }
+.tool-header .tool-summary { color:var(--fg2); font-weight:400; font-size:12px; margin-left:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+.tool-header .chevron { color:var(--fg2); font-size:12px; margin-left:auto; transition:transform .2s; }
+.tool-card.open .chevron { transform:rotate(180deg); }
+.tool-body { padding:10px 12px; font-size:13px; display:none; }
+.tool-card.open .tool-body { display:block; }
+.tool-body pre { margin:0; white-space:pre-wrap; }
+.tool-result { border-top:1px solid var(--border); padding:8px 12px; font-size:12px; color:var(--fg2); }
+.tool-result.error { color:var(--red); }
+
+/* AskUserQuestion panel */
+.ask-panel { background:var(--bg2); border:1px solid var(--blue); border-radius:var(--radius); padding:16px; margin:8px 0; }
+.ask-panel .ask-q { font-size:15px; font-weight:600; margin-bottom:12px; color:var(--fg); }
+.ask-panel .ask-header { font-size:11px; color:var(--accent); text-transform:uppercase; font-weight:700; margin-bottom:4px; }
+.ask-opts { display:flex; flex-direction:column; gap:6px; }
+.ask-opt { display:flex; align-items:flex-start; gap:10px; padding:10px 12px; background:var(--bg3); border:2px solid transparent; border-radius:var(--radius); cursor:pointer; transition:border-color .15s; }
+.ask-opt:hover { border-color:var(--accent); }
+.ask-opt.selected { border-color:var(--accent); background:#1c2d4a; }
+.ask-opt .opt-radio { width:18px; height:18px; border-radius:50%; border:2px solid var(--fg2); flex-shrink:0; margin-top:2px; display:flex; align-items:center; justify-content:center; }
+.ask-opt.selected .opt-radio { border-color:var(--accent); }
+.ask-opt.selected .opt-radio::after { content:''; width:10px; height:10px; border-radius:50%; background:var(--accent); }
+.ask-opt.multi .opt-radio { border-radius:4px; }
+.ask-opt.multi.selected .opt-radio::after { border-radius:2px; }
+.ask-opt .opt-label { font-size:14px; font-weight:600; }
+.ask-opt .opt-desc { font-size:12px; color:var(--fg2); margin-top:2px; }
+.ask-other { margin-top:8px; }
+.ask-other input { width:100%; background:var(--bg3); color:var(--fg); border:1px solid var(--border); border-radius:var(--radius); padding:8px 12px; font-size:14px; outline:none; }
+.ask-other input:focus { border-color:var(--accent); }
+.ask-btns { display:flex; gap:8px; margin-top:12px; }
+.ask-answered { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:12px; margin:8px 0; }
+.ask-answered .ans-q { font-size:13px; color:var(--fg2); margin-bottom:4px; }
+.ask-answered .ans-v { display:inline-block; background:#1c2d4a; color:var(--accent); padding:2px 10px; border-radius:12px; font-size:13px; margin:2px 4px 2px 0; }
+
+/* Todo list */
+.todo-list { margin:8px 0; }
+.todo-item { display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; border-bottom:1px solid var(--border); }
+.todo-item:last-child { border-bottom:none; }
+.todo-icon { font-size:16px; flex-shrink:0; }
+.todo-icon.done { color:var(--green); }
+.todo-icon.progress { color:var(--orange); }
+.todo-icon.pending { color:var(--fg2); }
+.todo-text { flex:1; }
+.todo-priority { font-size:11px; padding:1px 6px; border-radius:8px; font-weight:600; }
+.todo-priority.high { background:#3d1f1f; color:var(--red); }
+.todo-priority.medium { background:#3d2f0f; color:var(--orange); }
+.todo-priority.low { background:var(--bg3); color:var(--fg2); }
+
+/* Task list */
+.task-list { margin:8px 0; }
+.task-progress { height:6px; background:var(--bg3); border-radius:3px; margin-bottom:8px; overflow:hidden; }
+.task-progress-bar { height:100%; background:var(--green); border-radius:3px; transition:width .3s; }
+.task-item { display:flex; align-items:center; gap:8px; padding:5px 0; font-size:13px; }
+.task-status { font-size:11px; padding:1px 8px; border-radius:8px; font-weight:600; }
+.task-status.completed { background:#1a3a1a; color:var(--green); }
+.task-status.in_progress { background:#3d2f0f; color:var(--orange); }
+.task-status.pending { background:var(--bg3); color:var(--fg2); }
+
+/* Permission banner */
+#permBanner { position:sticky; bottom:0; background:#1a1a2e; border:1px solid var(--orange); border-radius:var(--radius); padding:12px 16px; margin-top:8px; }
+#permBanner.hidden { display:none; }
+.perm-title { font-weight:600; color:var(--orange); margin-bottom:6px; }
+.perm-tool { font-size:13px; color:var(--fg); margin-bottom:4px; }
+.perm-rule { font-size:12px; color:var(--fg2); font-family:monospace; background:var(--bg); padding:4px 8px; border-radius:4px; display:inline-block; margin:4px 0; }
+.perm-input-detail { font-size:12px; color:var(--fg2); background:var(--bg); padding:8px; border-radius:4px; margin:6px 0; max-height:120px; overflow-y:auto; white-space:pre-wrap; font-family:monospace; }
+.perm-btns { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+.perm-btns button { padding:6px 16px; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; }
+.btn-allow { background:var(--green); color:#000; }
+.btn-allow-remember { background:#238636; color:#fff; }
+.btn-deny { background:var(--red); color:#fff; }
+
+/* Input area */
+#inputArea { padding:12px 16px; background:var(--bg2); border-top:1px solid var(--border); }
+.input-row { display:flex; gap:8px; }
+#promptInput { flex:1; background:var(--bg3); color:var(--fg); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; font-size:14px; resize:none; font-family:inherit; outline:none; }
+#promptInput:focus { border-color:var(--accent); }
+.btn-col { display:flex; flex-direction:column; gap:4px; }
+button { padding:8px 16px; border:none; border-radius:var(--radius); cursor:pointer; font-size:13px; font-weight:600; white-space:nowrap; }
+.btn-primary { background:var(--accent); color:#000; }
+.btn-primary:hover { background:#79c0ff; }
+.btn-primary:disabled { opacity:.5; cursor:not-allowed; }
+.btn-danger { background:var(--red); color:#fff; }
+.btn-secondary { background:var(--bg3); color:var(--fg); border:1px solid var(--border); }
+.btn-secondary:hover { background:var(--border); }
+.hidden { display:none !important; }
+.input-footer { display:flex; justify-content:space-between; margin-top:6px; font-size:12px; color:var(--fg2); }
+.streaming-dot::after { content:'●'; animation:blink 1s infinite; color:var(--accent); margin-left:4px; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+/* Settings */
+.settings-overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:100; display:flex; align-items:center; justify-content:center; }
+.settings-overlay.hidden { display:none; }
+.settings-panel { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:24px; width:520px; max-width:90vw; }
+.settings-panel h2 { font-size:18px; margin-bottom:16px; color:var(--accent); }
+.sg { margin-bottom:14px; }
+.sg label { display:block; font-size:13px; font-weight:600; color:var(--fg2); margin-bottom:6px; }
+.sg .hint { font-size:11px; color:var(--fg2); margin-top:4px; }
+.sg input,.sg select { width:100%; background:var(--bg3); color:var(--fg); border:1px solid var(--border); border-radius:var(--radius); padding:8px 12px; font-size:14px; outline:none; }
+.sg input:focus,.sg select:focus { border-color:var(--accent); }
+.settings-footer { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
+.btn-settings { background:var(--bg3); color:var(--fg); border:1px solid var(--border); border-radius:var(--radius); padding:6px 12px; cursor:pointer; font-size:13px; }
+.settings-saved { color:var(--green); font-size:13px; margin-right:auto; align-self:center; opacity:0; transition:opacity .3s; }
+.settings-saved.show { opacity:1; }
+
+/* Sidebar */
+#sidebar { width:250px; background:var(--bg2); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; transition:width .25s ease; flex-shrink:0; }
+#sidebar.collapsed { width:0; border-right:none; }
+.sidebar-header { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid var(--border); }
+.sidebar-header span { font-size:14px; font-weight:600; }
+.sidebar-body { flex:1; overflow-y:auto; padding:4px 0; }
+.project-group { margin-bottom:4px; }
+.project-name { font-size:11px; font-weight:700; color:var(--fg2); text-transform:uppercase; padding:8px 12px 4px; letter-spacing:.5px; }
+.session-item { display:flex; flex-direction:column; padding:8px 12px; cursor:pointer; border-left:3px solid transparent; transition:background .15s; }
+.session-item:hover { background:var(--bg3); }
+.session-item.active { background:#1c2d4a; border-left-color:var(--accent); }
+.session-summary { font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.session-meta { font-size:11px; color:var(--fg2); margin-top:2px; }
+.btn-icon { background:none; border:none; color:var(--fg2); cursor:pointer; font-size:16px; padding:4px 6px; border-radius:4px; }
+.btn-icon:hover { background:var(--bg3); color:var(--fg); }
+
+/* File Panel */
+#filePanel { width:280px; background:var(--bg2); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; transition:width .25s ease; flex-shrink:0; }
+#filePanel.collapsed { width:0; border-left:none; }
+.filepanel-header { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid var(--border); }
+.filepanel-header span { font-size:14px; font-weight:600; }
+.filepanel-body { flex:1; overflow-y:auto; padding:4px 0; }
+.tree-item { display:flex; align-items:center; gap:4px; padding:3px 8px; cursor:pointer; font-size:13px; white-space:nowrap; }
+.tree-item:hover { background:var(--bg3); }
+.tree-icon { font-size:12px; width:16px; text-align:center; flex-shrink:0; }
+.tree-name { overflow:hidden; text-overflow:ellipsis; }
+.tree-children { display:none; }
+.tree-children.open { display:block; }
+.tree-size { font-size:11px; color:var(--fg2); margin-left:auto; }
+
+/* File Viewer Modal */
+.file-viewer-overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:200; display:flex; align-items:center; justify-content:center; }
+.file-viewer-overlay.hidden { display:none; }
+.file-viewer-panel { background:var(--bg2); border:1px solid var(--border); border-radius:12px; width:70vw; max-width:900px; max-height:80vh; display:flex; flex-direction:column; }
+.file-viewer-header { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border); }
+.file-viewer-header .fv-path { font-size:13px; color:var(--accent); font-family:monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.file-viewer-content { flex:1; overflow:auto; padding:16px; }
+.file-viewer-content pre { margin:0; white-space:pre-wrap; font-size:13px; font-family:'Cascadia Code','Fira Code',monospace; line-height:1.5; }
+
+/* Token Donut */
+#tokenDonut { display:inline-flex; align-items:center; gap:6px; }
+#tokenDonut svg { vertical-align:middle; }
+#tokenDonut .donut-label { font-size:11px; color:var(--fg2); }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Sidebar -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <span>会话列表</span>
+      <div style="display:flex;gap:4px;">
+        <button id="newSessionSideBtn" class="btn-icon" title="新建会话">＋</button>
+        <button id="sidebarCloseBtn" class="btn-icon" title="收起侧栏">◀</button>
+      </div>
+    </div>
+    <div class="sidebar-body" id="sidebarBody"></div>
+  </aside>
+
+  <!-- Main Area -->
+  <div id="mainArea">
+  <header id="header">
+    <div class="header-left">
+      <button id="sidebarToggle" class="btn-icon" title="会话列表">☰</button>
+      <span class="logo">意心Code</span><span class="version">v1.0</span>
+    </div>
+    <div class="header-center">
+      <select id="modelSelect"></select>
+      <select id="permSelect">
+        <option value="default">默认权限</option>
+        <option value="acceptEdits">自动接受编辑</option>
+        <option value="bypassPermissions">跳过所有权限</option>
+        <option value="plan">计划模式</option>
+      </select>
+    </div>
+    <div class="header-right">
+      <label class="cwd-label">工作目录</label>
+      <input id="cwdInput" type="text" placeholder="项目路径..." />
+      <button id="settingsBtn" class="btn-settings" title="设置">⚙ 设置</button>
+      <button id="filePanelToggle" class="btn-icon" title="文件浏览">📁</button>
+      <span id="connStatus" class="status-dot offline" title="未连接"></span>
+    </div>
+  </header>
+  <!-- Settings -->
+  <div id="settingsOverlay" class="settings-overlay hidden">
+    <div class="settings-panel">
+      <h2>⚙ 设置</h2>
+      <div class="sg"><label>API Base URL</label><input id="setBaseUrl" type="text" placeholder="https://api.anthropic.com" /><div class="hint">留空使用环境变量或官方默认</div></div>
+      <div class="sg"><label>API Key</label><input id="setApiKey" type="password" placeholder="sk-ant-..." /><div class="hint">留空使用环境变量 ANTHROPIC_API_KEY</div></div>
+      <div class="sg"><label>模型</label><select id="setModel"></select></div>
+      <div class="sg"><label>自定义模型名</label><input id="setCustomModel" type="text" placeholder="claude-sonnet-4-5-20250514" /><div class="hint">填写后覆盖下拉选择</div></div>
+      <div class="settings-footer"><span id="settingsSaved" class="settings-saved">已保存</span><button id="settingsSaveBtn" class="btn-primary">保存</button><button id="settingsCloseBtn" class="btn-settings">关闭</button></div>
+    </div>
+  </div>
+  <main id="chatArea"><div id="messages"></div><div id="permBanner" class="hidden"></div></main>
+  <footer id="inputArea">
+    <div class="input-row">
+      <textarea id="promptInput" rows="3" placeholder="输入消息... (Ctrl+Enter 发送)"></textarea>
+      <div class="btn-col">
+        <button id="sendBtn" class="btn-primary">发送</button>
+        <button id="abortBtn" class="btn-danger hidden">停止</button>
+        <button id="newBtn" class="btn-secondary">新会话</button>
+      </div>
+    </div>
+    <div class="input-footer"><span id="tokenInfo"></span><span id="tokenDonut"></span><span id="sessionInfo"></span></div>
+  </footer>
+  </div><!-- end #mainArea -->
+
+  <!-- File Panel -->
+  <aside id="filePanel" class="collapsed">
+    <div class="filepanel-header">
+      <span>文件浏览</span>
+      <div style="display:flex;gap:4px;">
+        <button id="fileRefreshBtn" class="btn-icon" title="刷新">🔄</button>
+        <button id="filePanelCloseBtn" class="btn-icon" title="收起">▶</button>
+      </div>
+    </div>
+    <div class="filepanel-body" id="fileTreeBody"></div>
+  </aside>
+</div>
+
+<!-- File Viewer Modal -->
+<div id="fileViewer" class="file-viewer-overlay hidden">
+  <div class="file-viewer-panel">
+    <div class="file-viewer-header">
+      <span class="fv-path" id="fvPath"></span>
+      <button id="fvCloseBtn" class="btn-icon" title="关闭">✕</button>
+    </div>
+    <div class="file-viewer-content"><pre id="fvContent"></pre></div>
+  </div>
+</div>
+<script>
+// ========== 意心Code 前端 ==========
+marked.setOptions({
+  highlight: (code, lang) => {
+    if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang }).value;
+    return hljs.highlightAuto(code).value;
+  }, breaks: true, gfm: true,
+});
+
+const $ = s => document.querySelector(s);
+const modelSelect=$('#modelSelect'), permSelect=$('#permSelect'), cwdInput=$('#cwdInput'),
+  connStatus=$('#connStatus'), messagesEl=$('#messages'), permBanner=$('#permBanner'),
+  promptInput=$('#promptInput'), sendBtn=$('#sendBtn'), abortBtn=$('#abortBtn'),
+  newBtn=$('#newBtn'), tokenInfo=$('#tokenInfo'), sessionInfo=$('#sessionInfo'),
+  settingsBtn=$('#settingsBtn'), settingsOverlay=$('#settingsOverlay'),
+  setBaseUrl=$('#setBaseUrl'), setApiKey=$('#setApiKey'), setModel=$('#setModel'),
+  setCustomModel=$('#setCustomModel'), settingsSaveBtn=$('#settingsSaveBtn'),
+  settingsCloseBtn=$('#settingsCloseBtn'), settingsSaved=$('#settingsSaved'),
+  sidebar=$('#sidebar'), sidebarBody=$('#sidebarBody'),
+  sidebarToggle=$('#sidebarToggle'), sidebarCloseBtn=$('#sidebarCloseBtn'),
+  newSessionSideBtn=$('#newSessionSideBtn'),
+  filePanel=$('#filePanel'), fileTreeBody=$('#fileTreeBody'),
+  filePanelToggle=$('#filePanelToggle'), filePanelCloseBtn=$('#filePanelCloseBtn'),
+  fileRefreshBtn=$('#fileRefreshBtn'),
+  fileViewer=$('#fileViewer'), fvPath=$('#fvPath'), fvContent=$('#fvContent'), fvCloseBtn=$('#fvCloseBtn'),
+  tokenDonut=$('#tokenDonut');
+
+let ws=null, sessionId=null, isStreaming=false, streamingEl=null, streamBuf='', flushTimer=null;
+
+// --- Tool category map ---
+const TOOL_CAT = {
+  Bash:'bash', Read:'search', Grep:'search', Glob:'search',
+  Edit:'edit', Write:'edit', ApplyPatch:'edit',
+  TodoWrite:'todo', TodoRead:'todo',
+  TaskCreate:'task', TaskUpdate:'task', TaskList:'task', TaskGet:'task',
+  AskUserQuestion:'question', Task:'agent',
+};
+const TOOL_ICON = {
+  bash:'$_', edit:'✎', search:'🔍', todo:'☑', task:'📋', question:'❓', agent:'🤖', default:'⚙',
+};
+
+// --- Init ---
+(async () => {
+  try {
+    const models = await (await fetch('/api/models')).json();
+    [modelSelect, setModel].forEach(sel => models.forEach(m => {
+      const o = document.createElement('option'); o.value=m.value; o.textContent=m.label; sel.appendChild(o);
+    }));
+  } catch {}
+  cwdInput.value = localStorage.getItem('yxcode_cwd') || '';
+  setBaseUrl.value = localStorage.getItem('yxcode_baseUrl') || '';
+  setApiKey.value = localStorage.getItem('yxcode_apiKey') || '';
+  setCustomModel.value = localStorage.getItem('yxcode_customModel') || '';
+  const sm = localStorage.getItem('yxcode_model');
+  if (sm) { modelSelect.value=sm; setModel.value=sm; }
+  cwdInput.addEventListener('change', () => localStorage.setItem('yxcode_cwd', cwdInput.value));
+  modelSelect.addEventListener('change', () => { localStorage.setItem('yxcode_model', modelSelect.value); setModel.value=modelSelect.value; });
+  settingsBtn.addEventListener('click', () => settingsOverlay.classList.remove('hidden'));
+  settingsCloseBtn.addEventListener('click', () => settingsOverlay.classList.add('hidden'));
+  settingsOverlay.addEventListener('click', e => { if(e.target===settingsOverlay) settingsOverlay.classList.add('hidden'); });
+  settingsSaveBtn.addEventListener('click', saveSettings);
+  connectWS();
+})();
+
+function saveSettings() {
+  localStorage.setItem('yxcode_baseUrl', setBaseUrl.value.trim());
+  localStorage.setItem('yxcode_apiKey', setApiKey.value.trim());
+  localStorage.setItem('yxcode_customModel', setCustomModel.value.trim());
+  localStorage.setItem('yxcode_model', setModel.value);
+  modelSelect.value = setModel.value;
+  settingsSaved.classList.add('show');
+  setTimeout(() => settingsSaved.classList.remove('show'), 2000);
+}
+
+// --- WebSocket ---
+function connectWS() {
+  const proto = location.protocol==='https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws.onopen = () => { connStatus.className='status-dot online'; connStatus.title='已连接'; };
+  ws.onclose = () => { connStatus.className='status-dot offline'; connStatus.title='未连接'; setTimeout(connectWS,3000); };
+  ws.onerror = () => {};
+  ws.onmessage = e => { try { handleMsg(JSON.parse(e.data)); } catch(err) { console.error('[ws parse]', err); } };
+}
+function wsSend(d) { if(ws&&ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(d)); }
+
+// --- Message dispatch ---
+function handleMsg(msg) {
+  switch(msg.type) {
+    case 'session-created': sessionId=msg.sessionId; sessionInfo.textContent='会话: '+sessionId.slice(0,8)+'...'; break;
+    case 'claude-response': handleClaudeResponse(msg.data); break;
+    case 'claude-complete': finishStreaming(); setStreaming(false); break;
+    case 'claude-error': finishStreaming(); setStreaming(false); appendSystemMsg('错误: '+msg.error,'error'); break;
+    case 'session-aborted': finishStreaming(); setStreaming(false); appendSystemMsg('会话已停止'); break;
+    case 'permission-request': showPermission(msg); break;
+    case 'permission-cancelled': permBanner.classList.add('hidden'); break;
+    case 'token-usage': tokenInfo.textContent=`Tokens: ${(msg.used||0).toLocaleString()}`; renderTokenDonut(msg.used||0, msg.total||200000); break;
+  }
+}
+
+// --- Claude response processing ---
+function handleClaudeResponse(raw) {
+  if(!raw) return;
+  const data = raw.message || raw;
+  console.log('[msg]', data.type, data.subtype||'', data.role||'');
+
+  if(data.type==='system' && data.subtype==='init') return;
+
+  // Streaming text
+  if(data.type==='content_block_delta') {
+    const t = data.delta?.text ?? data.delta?.text_delta ?? '';
+    if(t) { streamBuf+=t; scheduleFlush(); }
+    return;
+  }
+  if(data.type==='content_block_stop') { finishStreaming(); return; }
+
+  // Structured content array
+  if(Array.isArray(data.content)) {
+    if(data.role==='user') {
+      for(const p of data.content) {
+        if(p.type==='tool_result') {
+          const txt = typeof p.content==='string' ? p.content
+            : Array.isArray(p.content) ? p.content.map(c=>c.text||'').join('') : JSON.stringify(p.content);
+          appendToolResult({ tool_use_id:p.tool_use_id, content:txt, is_error:p.is_error });
+        }
+      }
+      return;
+    }
+    for(const p of data.content) {
+      if(p.type==='text' && p.text?.trim()) { finishStreaming(); streamBuf=p.text; ensureAssistantEl(); flushBuf(); finishStreaming(); }
+      if(p.type==='tool_use') { finishStreaming(); handleToolUse(p); }
+    }
+    return;
+  }
+
+  // Plain string
+  if(typeof data.content==='string' && data.content.trim()) {
+    finishStreaming(); streamBuf=data.content; ensureAssistantEl(); flushBuf(); finishStreaming(); return;
+  }
+
+  // Result
+  if(data.type==='result') {
+    finishStreaming();
+    if(data.subtype==='error_max_turns') appendSystemMsg('已达到最大轮次');
+  }
+}
+
+// --- Tool use handler (routes to special renderers) ---
+function handleToolUse(part) {
+  const name = part.name || 'Tool';
+  if(name==='AskUserQuestion') { renderAskUserQuestion(part); return; }
+  if(name==='TodoWrite' || name==='TodoRead') { renderTodoTool(part); return; }
+  if(name==='TaskList' || name==='TaskGet') { renderTaskTool(part); return; }
+  appendToolCard(part);
+}
+
+// ========== AskUserQuestion ==========
+function renderAskUserQuestion(part) {
+  const input = part.input || {};
+  const questions = input.questions || [];
+  const panel = document.createElement('div');
+  panel.className = 'ask-panel';
+  panel.dataset.toolId = part.id || '';
+  panel.dataset.toolName = 'AskUserQuestion';
+
+  // State for multi-step
+  let step = 0;
+  const answers = {};
+
+  function renderStep() {
+    const q = questions[step];
+    if(!q) return;
+    const multi = q.multiSelect || false;
+    const selected = new Set();
+    let otherText = '';
+
+    panel.innerHTML = '';
+    if(q.header) { const h = document.createElement('div'); h.className='ask-header'; h.textContent=q.header; panel.appendChild(h); }
+    const qEl = document.createElement('div'); qEl.className='ask-q';
+    qEl.textContent = `${questions.length>1 ? `(${step+1}/${questions.length}) ` : ''}${q.question}`;
+    panel.appendChild(qEl);
+
+    const optsEl = document.createElement('div'); optsEl.className='ask-opts';
+    (q.options||[]).forEach((opt, i) => {
+      const el = document.createElement('div');
+      el.className = 'ask-opt' + (multi ? ' multi' : '');
+      el.innerHTML = `<div class="opt-radio"></div><div><div class="opt-label">${escHtml(opt.label)}</div>${opt.description ? `<div class="opt-desc">${escHtml(opt.description)}</div>` : ''}</div>`;
+      el.addEventListener('click', () => {
+        if(multi) { selected.has(i) ? selected.delete(i) : selected.add(i); }
+        else { selected.clear(); selected.add(i); }
+        optsEl.querySelectorAll('.ask-opt').forEach((o,j) => o.classList.toggle('selected', selected.has(j)));
+      });
+      optsEl.appendChild(el);
+    });
+    panel.appendChild(optsEl);
+
+    // "Other" free text
+    const otherDiv = document.createElement('div'); otherDiv.className='ask-other';
+    otherDiv.innerHTML = `<input type="text" placeholder="其他 (自定义回复)..." />`;
+    otherDiv.querySelector('input').addEventListener('input', e => { otherText = e.target.value; });
+    panel.appendChild(otherDiv);
+
+    // Buttons
+    const btns = document.createElement('div'); btns.className='ask-btns';
+    if(step > 0) {
+      const backBtn = document.createElement('button'); backBtn.className='btn-secondary'; backBtn.textContent='上一步';
+      backBtn.addEventListener('click', () => { step--; renderStep(); });
+      btns.appendChild(backBtn);
+    }
+    const nextLabel = step < questions.length-1 ? '下一步' : '提交';
+    const nextBtn = document.createElement('button'); nextBtn.className='btn-primary'; nextBtn.textContent=nextLabel;
+    nextBtn.addEventListener('click', () => {
+      // Collect answer
+      const opts = q.options||[];
+      const vals = [...selected].map(i => opts[i].label);
+      if(otherText.trim()) vals.push(otherText.trim());
+      answers[q.question] = vals.join(', ');
+      if(step < questions.length-1) { step++; renderStep(); }
+      else { submitAsk(); }
+    });
+    btns.appendChild(nextBtn);
+    const skipBtn = document.createElement('button'); skipBtn.className='btn-secondary'; skipBtn.textContent='跳过';
+    skipBtn.addEventListener('click', () => { submitAsk(true); });
+    btns.appendChild(skipBtn);
+    panel.appendChild(btns);
+  }
+
+  function submitAsk(skip) {
+    const decision = { allow:true, updatedInput: { ...input, answers: skip ? {} : answers } };
+    wsSend({ type:'permission-response', requestId: panel._requestId, ...decision });
+    // Replace with answered display
+    panel.innerHTML = '';
+    panel.className = 'ask-answered';
+    if(skip) { panel.innerHTML = '<div class="ans-q" style="color:var(--fg2)">已跳过</div>'; }
+    else {
+      for(const [q, a] of Object.entries(answers)) {
+        const row = document.createElement('div');
+        row.innerHTML = `<div class="ans-q">${escHtml(q)}</div><div class="ans-v">${escHtml(a)}</div>`;
+        panel.appendChild(row);
+      }
+    }
+    scrollBottom();
+  }
+
+  renderStep();
+  messagesEl.appendChild(panel);
+  scrollBottom();
+}
+
+// ========== TodoWrite / TodoRead ==========
+function renderTodoTool(part) {
+  const card = createToolCard(part);
+  const body = card.querySelector('.tool-body');
+  const items = parseTodoItems(part.input);
+  if(items.length) {
+    body.innerHTML = '';
+    const list = document.createElement('div'); list.className='todo-list';
+    items.forEach(t => {
+      const row = document.createElement('div'); row.className='todo-item';
+      const icon = t.status==='completed' ? '✅' : t.status==='in_progress' ? '🔄' : '⭕';
+      const iconCls = t.status==='completed' ? 'done' : t.status==='in_progress' ? 'progress' : 'pending';
+      row.innerHTML = `<span class="todo-icon ${iconCls}">${icon}</span><span class="todo-text">${escHtml(t.subject||t.content||'')}</span>`;
+      if(t.priority) row.innerHTML += `<span class="todo-priority ${t.priority}">${t.priority}</span>`;
+      list.appendChild(row);
+    });
+    body.appendChild(list);
+  }
+  card.classList.add('open');
+  messagesEl.appendChild(card);
+  scrollBottom();
+}
+
+function parseTodoItems(input) {
+  if(!input) return [];
+  // TodoWrite: input.todos array
+  if(Array.isArray(input.todos)) return input.todos;
+  if(Array.isArray(input.items)) return input.items;
+  // TodoRead result: try JSON parse
+  if(typeof input === 'string') { try { const d=JSON.parse(input); if(Array.isArray(d)) return d; } catch{} }
+  return [];
+}
+
+// ========== TaskList / TaskGet ==========
+function renderTaskTool(part) {
+  const card = createToolCard(part);
+  card.classList.add('open');
+  messagesEl.appendChild(card);
+  scrollBottom();
+}
+
+function renderTaskResult(card, content) {
+  const body = card.querySelector('.tool-body') || card;
+  const items = parseTaskItems(content);
+  if(!items.length) return;
+  const wrap = document.createElement('div'); wrap.className='task-list';
+  const done = items.filter(t=>t.status==='completed').length;
+  wrap.innerHTML = `<div class="task-progress"><div class="task-progress-bar" style="width:${items.length?Math.round(done/items.length*100):0}%"></div></div>`;
+  items.forEach(t => {
+    const row = document.createElement('div'); row.className='task-item';
+    const icon = t.status==='completed' ? '✅' : t.status==='in_progress' ? '🔄' : '⭕';
+    row.innerHTML = `<span>${icon}</span><span style="flex:1">${escHtml(t.subject||t.text||'')}</span><span class="task-status ${t.status||'pending'}">${t.status||'pending'}</span>`;
+    wrap.appendChild(row);
+  });
+  body.innerHTML = '';
+  body.appendChild(wrap);
+}
+
+function parseTaskItems(content) {
+  if(!content) return [];
+  // Try JSON
+  try { const d=JSON.parse(content); if(Array.isArray(d)) return d; if(d.tasks) return d.tasks; } catch{}
+  // Try regex: #1. [completed] subject
+  const items = [];
+  const re = /#(\d+)\.?\s*(?:\[(\w+)\]\s*)?(.+)/g;
+  let m;
+  while((m=re.exec(content))) items.push({ id:m[1], status:m[2]||'pending', subject:m[3].trim() });
+  if(items.length) return items;
+  // Fallback: line-based
+  content.split('\n').filter(l=>l.trim()).forEach(l => items.push({ subject:l.trim(), status:'pending' }));
+  return items;
+}
+
+// ========== Generic tool card ==========
+function createToolCard(part) {
+  const name = part.name || 'Tool';
+  const cat = TOOL_CAT[name] || 'default';
+  const icon = TOOL_ICON[cat] || TOOL_ICON.default;
+  const card = document.createElement('div');
+  card.className = 'tool-card';
+  card.dataset.toolId = part.id || '';
+  card.dataset.toolName = name;
+  card.dataset.cat = cat;
+
+  const summary = getToolSummary(name, part.input);
+  card.innerHTML = `
+    <div class="tool-header" onclick="this.parentElement.classList.toggle('open')">
+      <span class="tool-icon">${icon}</span>
+      <span class="tool-name">${escHtml(name)}</span>
+      <span class="tool-summary">${escHtml(summary)}</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="tool-body"><pre>${escHtml(formatToolInput(name, part.input))}</pre></div>`;
+  return card;
+}
+
+function appendToolCard(part) {
+  const card = createToolCard(part);
+  messagesEl.appendChild(card);
+  scrollBottom();
+}
+
+function getToolSummary(name, input) {
+  if(!input) return '';
+  if(name==='Bash') return input.command ? input.command.slice(0,60) : '';
+  if(name==='Read') return input.file_path ? input.file_path.split(/[/\\]/).pop() : '';
+  if(name==='Edit'||name==='Write') return input.file_path ? input.file_path.split(/[/\\]/).pop() : '';
+  if(name==='Grep') return input.pattern || '';
+  if(name==='Glob') return input.pattern || '';
+  if(name==='TaskCreate') return input.subject || '';
+  if(name==='TaskUpdate') return `#${input.taskId||'?'} → ${input.status||''}`;
+  if(name==='TaskList') return '列出任务';
+  if(name==='TaskGet') return `#${input.taskId||'?'}`;
+  return '';
+}
+
+function formatToolInput(name, input) {
+  if(!input) return '';
+  if(typeof input==='string') return input;
+  if(name==='Bash') return input.command || JSON.stringify(input,null,2);
+  if(name==='Edit') return `文件: ${input.file_path||''}\n旧: ${input.old_string||''}\n新: ${input.new_string||''}`;
+  if(name==='Write') return `文件: ${input.file_path||''}\n${input.content||''}`;
+  return JSON.stringify(input, null, 2);
+}
+
+function appendToolResult(block) {
+  const cards = messagesEl.querySelectorAll('.tool-card, .ask-panel');
+  let target = null;
+  if(block.tool_use_id) {
+    for(const c of cards) { if(c.dataset.toolId===block.tool_use_id) { target=c; break; } }
+  }
+  if(!target && cards.length) target = cards[cards.length-1];
+
+  const text = typeof block.content==='string' ? block.content : JSON.stringify(block.content);
+
+  // Special rendering for task tools
+  if(target && (target.dataset.toolName==='TaskList' || target.dataset.toolName==='TaskGet')) {
+    renderTaskResult(target, text);
+    target.classList.add('open');
+    scrollBottom();
+    return;
+  }
+  // Special rendering for TodoRead result
+  if(target && target.dataset.toolName==='TodoRead') {
+    const items = parseTodoItems(text);
+    if(items.length) {
+      const body = target.querySelector('.tool-body');
+      body.innerHTML = '';
+      const list = document.createElement('div'); list.className='todo-list';
+      items.forEach(t => {
+        const row = document.createElement('div'); row.className='todo-item';
+        const icon = t.status==='completed'?'✅':t.status==='in_progress'?'🔄':'⭕';
+        const cls = t.status==='completed'?'done':t.status==='in_progress'?'progress':'pending';
+        row.innerHTML = `<span class="todo-icon ${cls}">${icon}</span><span class="todo-text">${escHtml(t.subject||t.content||'')}</span>`;
+        list.appendChild(row);
+      });
+      body.appendChild(list);
+      target.classList.add('open');
+      scrollBottom();
+      return;
+    }
+  }
+
+  const truncated = text.length>3000 ? text.slice(0,3000)+'\n... (truncated)' : text;
+  if(target) {
+    const res = document.createElement('div');
+    res.className = 'tool-result' + (block.is_error ? ' error' : '');
+    res.innerHTML = `<pre>${escHtml(truncated)}</pre>`;
+    target.appendChild(res);
+  }
+  scrollBottom();
+}
+
+// ========== Permission UI (enhanced) ==========
+function showPermission(msg) {
+  // AskUserQuestion gets its own panel, not the permission banner
+  if(msg.toolName === 'AskUserQuestion') {
+    // Find the ask-panel we already rendered and bind requestId
+    const panels = messagesEl.querySelectorAll('.ask-panel');
+    for(const p of panels) {
+      if(!p._requestId) { p._requestId = msg.requestId; scrollBottom(); return; }
+    }
+    // Fallback: render inline
+    const fakeInput = msg.input || {};
+    renderAskUserQuestion({ id: msg.requestId, name:'AskUserQuestion', input: fakeInput });
+    const newPanels = messagesEl.querySelectorAll('.ask-panel');
+    const last = newPanels[newPanels.length-1];
+    if(last) last._requestId = msg.requestId;
+    return;
+  }
+
+  const inputStr = typeof msg.input==='string' ? msg.input
+    : msg.input?.command || msg.input?.file_path || JSON.stringify(msg.input,null,2);
+  const rule = getPermRule(msg.toolName, msg.input);
+
+  permBanner.innerHTML = `
+    <div class="perm-title">🔒 权限请求</div>
+    <div class="perm-tool">工具: <code>${escHtml(msg.toolName)}</code></div>
+    ${rule ? `<div class="perm-rule">${escHtml(rule)}</div>` : ''}
+    <details><summary style="font-size:12px;color:var(--fg2);cursor:pointer;margin:4px 0">查看详情</summary>
+      <div class="perm-input-detail">${escHtml(inputStr)}</div>
+    </details>
+    <div class="perm-btns">
+      <button class="btn-allow" data-rid="${msg.requestId}" data-act="once">允许一次</button>
+      <button class="btn-allow-remember" data-rid="${msg.requestId}" data-act="remember" data-rule="${escAttr(rule||msg.toolName)}">允许并记住</button>
+      <button class="btn-deny" data-rid="${msg.requestId}" data-act="deny">拒绝</button>
+    </div>`;
+  permBanner.classList.remove('hidden');
+  permBanner.querySelectorAll('.perm-btns button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const rid = btn.dataset.rid, act = btn.dataset.act;
+      if(act==='once') wsSend({ type:'permission-response', requestId:rid, allow:true });
+      else if(act==='remember') wsSend({ type:'permission-response', requestId:rid, allow:true, rememberEntry:btn.dataset.rule });
+      else wsSend({ type:'permission-response', requestId:rid, allow:false, message:'User denied' });
+      permBanner.classList.add('hidden');
+    });
+  });
+  scrollBottom();
+}
+
+function getPermRule(toolName, input) {
+  if(toolName==='Bash' && input?.command) {
+    const cmd = input.command.trim();
+    const first = cmd.split(/\s/)[0];
+    return `Bash(${first}:*)`;
+  }
+  return toolName;
+}
+
+function escAttr(s) { return (s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+// ========== Streaming helpers ==========
+function scheduleFlush() { if(flushTimer) return; flushTimer=setTimeout(()=>{ flushTimer=null; flushBuf(); },80); }
+function ensureAssistantEl() { if(!streamingEl) { streamingEl=createMsgEl('assistant'); messagesEl.appendChild(streamingEl); } }
+function flushBuf() {
+  if(!streamBuf) return;
+  ensureAssistantEl();
+  const c = streamingEl.querySelector('.content');
+  c.innerHTML = marked.parse(streamBuf);
+  c.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+  scrollBottom();
+}
+function finishStreaming() {
+  if(flushTimer) { clearTimeout(flushTimer); flushTimer=null; }
+  if(streamBuf) flushBuf();
+  if(streamingEl) { streamingEl.querySelector('.role')?.classList.remove('streaming-dot'); streamingEl=null; }
+  streamBuf='';
+}
+
+// ========== UI helpers ==========
+function createMsgEl(role) {
+  const d=document.createElement('div'); d.className='msg '+role;
+  d.innerHTML=`<div class="role ${role==='assistant'?'streaming-dot':''}">${role==='user'?'你':'Claude'}</div><div class="content"></div>`;
+  return d;
+}
+function appendUserMsg(t) { const e=createMsgEl('user'); e.querySelector('.content').textContent=t; messagesEl.appendChild(e); scrollBottom(); }
+function appendSystemMsg(t,type) {
+  const d=document.createElement('div'); d.className='msg assistant';
+  d.style.borderColor=type==='error'?'var(--red)':'var(--orange)';
+  d.innerHTML=`<div class="role" style="color:${type==='error'?'var(--red)':'var(--orange)'}">系统</div><div class="content">${escHtml(t)}</div>`;
+  messagesEl.appendChild(d); scrollBottom();
+}
+function scrollBottom() { const a=$('#chatArea'); requestAnimationFrame(()=>{a.scrollTop=a.scrollHeight;}); }
+function escHtml(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+// ========== Send / Abort / New ==========
+function send() {
+  const t=promptInput.value.trim(); if(!t||isStreaming) return;
+  appendUserMsg(t); promptInput.value='';
+  const cm=localStorage.getItem('yxcode_customModel')||'';
+  wsSend({ type:'claude-command', prompt:t, sessionId, cwd:cwdInput.value||null,
+    model:cm||modelSelect.value, permissionMode:permSelect.value,
+    apiBaseUrl:localStorage.getItem('yxcode_baseUrl')||null,
+    apiKey:localStorage.getItem('yxcode_apiKey')||null });
+  setStreaming(true);
+}
+function abort() { if(sessionId) wsSend({type:'abort-session',sessionId}); }
+function newSession() { sessionId=null; messagesEl.innerHTML=''; sessionInfo.textContent=''; tokenInfo.textContent=''; tokenDonut.innerHTML=''; finishStreaming(); setStreaming(false); renderSidebar(); }
+function setStreaming(v) { isStreaming=v; sendBtn.disabled=v; abortBtn.classList.toggle('hidden',!v); connStatus.className='status-dot '+(v?'busy':'online'); }
+
+sendBtn.addEventListener('click', send);
+abortBtn.addEventListener('click', abort);
+newBtn.addEventListener('click', newSession);
+promptInput.addEventListener('keydown', e => { if(e.key==='Enter'&&e.ctrlKey){e.preventDefault();send();} });
+
+// ========== Sidebar / File Panel Toggle ==========
+sidebarToggle.addEventListener('click', () => sidebar.classList.toggle('collapsed'));
+sidebarCloseBtn.addEventListener('click', () => sidebar.classList.add('collapsed'));
+newSessionSideBtn.addEventListener('click', () => { newSession(); });
+filePanelToggle.addEventListener('click', () => { filePanel.classList.toggle('collapsed'); if(!filePanel.classList.contains('collapsed')) loadFileTree(); });
+filePanelCloseBtn.addEventListener('click', () => filePanel.classList.add('collapsed'));
+fileRefreshBtn.addEventListener('click', loadFileTree);
+fvCloseBtn.addEventListener('click', () => fileViewer.classList.add('hidden'));
+fileViewer.addEventListener('click', e => { if(e.target===fileViewer) fileViewer.classList.add('hidden'); });
+
+// Update cwd also refreshes file tree
+cwdInput.addEventListener('change', () => {
+  localStorage.setItem('yxcode_cwd', cwdInput.value);
+  if(!filePanel.classList.contains('collapsed')) loadFileTree();
+});
+
+// ========== Sidebar: Projects & Sessions ==========
+let projectsData = [];
+
+async function loadProjects() {
+  try {
+    projectsData = await (await fetch('/api/projects')).json();
+    renderSidebar();
+  } catch(e) { console.error('[loadProjects]', e); }
+}
+
+function renderSidebar() {
+  sidebarBody.innerHTML = '';
+  if(!projectsData.length) {
+    sidebarBody.innerHTML = '<div style="padding:16px;color:var(--fg2);font-size:13px;text-align:center">暂无会话记录</div>';
+    return;
+  }
+  for(const proj of projectsData) {
+    const group = document.createElement('div');
+    group.className = 'project-group';
+    // Decode project name (directory name uses -- for / etc)
+    const displayName = decodeProjectName(proj.name);
+    group.innerHTML = `<div class="project-name" title="${escAttr(proj.name)}">${escHtml(displayName)}</div>`;
+    for(const s of proj.sessions) {
+      const item = document.createElement('div');
+      item.className = 'session-item' + (s.id === sessionId ? ' active' : '');
+      item.innerHTML = `<div class="session-summary">${escHtml(s.summary || s.id.slice(0,12))}</div><div class="session-meta">${s.msgCount}条消息 · ${timeAgo(s.mtime)}</div>`;
+      item.addEventListener('click', () => switchSession(proj.name, s.id));
+      group.appendChild(item);
+    }
+    sidebarBody.appendChild(group);
+  }
+}
+
+function decodeProjectName(name) {
+  // ~/.claude/projects/ uses path encoding: D--code-github becomes D:/code/github
+  return name.replace(/^([A-Z])-/, '$1:/').replace(/-/g, '/');
+}
+
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if(mins < 1) return '刚刚';
+  if(mins < 60) return mins + '分钟前';
+  const hrs = Math.floor(mins / 60);
+  if(hrs < 24) return hrs + '小时前';
+  const days = Math.floor(hrs / 24);
+  if(days < 30) return days + '天前';
+  return Math.floor(days / 30) + '个月前';
+}
+
+async function switchSession(projectName, sid) {
+  try {
+    const msgs = await (await fetch(`/api/projects/${encodeURIComponent(projectName)}/sessions/${encodeURIComponent(sid)}/messages`)).json();
+    // Clear and replay
+    messagesEl.innerHTML = '';
+    finishStreaming();
+    setStreaming(false);
+    sessionId = sid;
+    sessionInfo.textContent = '会话: ' + sid.slice(0,8) + '...';
+    for(const m of msgs) {
+      if(m.role === 'user') appendUserMsg(m.content);
+      else {
+        const el = createMsgEl('assistant');
+        el.querySelector('.content').innerHTML = marked.parse(m.content);
+        el.querySelector('.content').querySelectorAll('pre code').forEach(c => hljs.highlightElement(c));
+        el.querySelector('.role').classList.remove('streaming-dot');
+        messagesEl.appendChild(el);
+      }
+    }
+    scrollBottom();
+    // Update active state
+    sidebarBody.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+    // Find and mark active
+    renderSidebar();
+  } catch(e) { console.error('[switchSession]', e); appendSystemMsg('加载会话失败: ' + e.message, 'error'); }
+}
+
+// ========== File Tree ==========
+async function loadFileTree() {
+  const cwd = cwdInput.value || '';
+  if(!cwd) { fileTreeBody.innerHTML = '<div style="padding:16px;color:var(--fg2);font-size:13px;text-align:center">请先设置工作目录</div>'; return; }
+  try {
+    const items = await (await fetch('/api/files?cwd=' + encodeURIComponent(cwd))).json();
+    fileTreeBody.innerHTML = '';
+    renderFileTree(items, fileTreeBody, 0);
+  } catch(e) { fileTreeBody.innerHTML = `<div style="padding:16px;color:var(--red);font-size:13px">${escHtml(e.message)}</div>`; }
+}
+
+function renderFileTree(items, container, depth) {
+  for(const item of items) {
+    const row = document.createElement('div');
+    row.className = 'tree-item';
+    row.style.paddingLeft = (8 + depth * 16) + 'px';
+    if(item.type === 'dir') {
+      row.innerHTML = `<span class="tree-icon">▶</span><span class="tree-name">📁 ${escHtml(item.name)}</span>`;
+      container.appendChild(row);
+      const childContainer = document.createElement('div');
+      childContainer.className = 'tree-children';
+      container.appendChild(childContainer);
+      if(item.children?.length) renderFileTree(item.children, childContainer, depth + 1);
+      row.addEventListener('click', () => {
+        childContainer.classList.toggle('open');
+        row.querySelector('.tree-icon').textContent = childContainer.classList.contains('open') ? '▼' : '▶';
+      });
+    } else {
+      const sizeStr = item.size > 1024 ? (item.size / 1024).toFixed(1) + 'K' : item.size + 'B';
+      row.innerHTML = `<span class="tree-icon">·</span><span class="tree-name">${escHtml(item.name)}</span><span class="tree-size">${sizeStr}</span>`;
+      row.addEventListener('click', () => viewFile(item.path));
+      container.appendChild(row);
+    }
+  }
+}
+
+async function viewFile(filePath) {
+  try {
+    const data = await (await fetch('/api/file?path=' + encodeURIComponent(filePath))).json();
+    if(data.error) { appendSystemMsg(data.error, 'error'); return; }
+    fvPath.textContent = filePath;
+    fvContent.textContent = data.content;
+    // Try syntax highlight
+    const ext = filePath.split('.').pop();
+    if(ext && hljs.getLanguage(ext)) {
+      fvContent.innerHTML = hljs.highlight(data.content, { language: ext }).value;
+    }
+    fileViewer.classList.remove('hidden');
+  } catch(e) { appendSystemMsg('读取文件失败: ' + e.message, 'error'); }
+}
+
+// ========== Token Donut ==========
+function renderTokenDonut(used, total) {
+  if(!total) total = 200000; // default context window
+  const pct = Math.min(used / total, 1);
+  const color = pct < 0.5 ? 'var(--accent)' : pct < 0.75 ? 'var(--orange)' : 'var(--red)';
+  const r = 14, circ = 2 * Math.PI * r;
+  const offset = circ * (1 - pct);
+  tokenDonut.innerHTML = `
+    <svg width="36" height="36" viewBox="0 0 36 36">
+      <circle cx="18" cy="18" r="${r}" fill="none" stroke="var(--bg3)" stroke-width="4"/>
+      <circle cx="18" cy="18" r="${r}" fill="none" stroke="${color}" stroke-width="4"
+        stroke-dasharray="${circ}" stroke-dashoffset="${offset}"
+        stroke-linecap="round" transform="rotate(-90 18 18)"/>
+      <text x="18" y="20" text-anchor="middle" fill="var(--fg2)" font-size="8">${Math.round(pct*100)}%</text>
+    </svg>
+    <span class="donut-label">${(used/1000).toFixed(1)}K / ${(total/1000).toFixed(0)}K</span>`;
+}
+
+// Load projects on init
+loadProjects();
+</script>
+</body>
+</html>
