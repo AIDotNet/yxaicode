@@ -1,6 +1,6 @@
 {
   "name": "@yxai/code",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "意心Code - 无门槛的ClaudeCode可视化轻量工具",
   "type": "module",
   "main": "server.js",
