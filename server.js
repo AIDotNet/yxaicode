@@ -27,20 +27,20 @@ if (args.includes('--help') || args.includes('-h')) {
 意心Code (yxcode) - Claude Code 可视化交互界面
 
 用法:
-  yxaiCode [选项]
+  yxai [选项]
 
 选项:
   -h, --help     显示帮助信息
   -v, --version  显示版本号
-  -p, --port     指定端口号 (默认: 3456)
+  -p, --port     指定端口号 (默认: 6060)
 
 环境变量:
   PORT           自定义端口号
 
 示例:
-  yxaiCode
-  yxaiCode --port 8080
-  PORT=8080 yxaiCode
+  yxai
+  yxai --port 8080
+  PORT=8080 yxai
 `);
   process.exit(0);
 }
@@ -52,7 +52,7 @@ if (args.includes('--version') || args.includes('-v')) {
 }
 
 // --- Config ---
-let PORT = parseInt(process.env.PORT, 10) || 3456;
+let PORT = parseInt(process.env.PORT, 10) || 6060;
 const portIndex = args.findIndex(arg => arg === '--port' || arg === '-p');
 if (portIndex !== -1 && args[portIndex + 1]) {
   PORT = parseInt(args[portIndex + 1], 10);
@@ -545,31 +545,46 @@ wss.on('connection', (ws) => {
   ws.on('close', () => console.log('[WS] client disconnected'));
 });
 
-server.listen(PORT, () => {
-  const url = `http://localhost:${PORT}`;
-  console.log(`\n  意心Code (yxcode) 已启动`);
-  console.log(`  ${url}\n`);
+// Try to start server, auto-increment port if in use
+const MAX_PORT_ATTEMPTS = 100;
+let currentPort = PORT;
+let portAttempts = 0;
 
-  // Auto-open browser
-  const open = (url) => {
-    const cmd = process.platform === 'win32' ? `start ${url}`
-      : process.platform === 'darwin' ? `open ${url}`
-      : `xdg-open ${url}`;
-    exec(cmd);
-  };
+function startServer(port) {
+  server.listen(port, () => {
+    PORT = port;
+    const url = `http://localhost:${port}`;
+    console.log(`\n  意心Code (yxcode) 已启动`);
+    console.log(`  ${url}\n`);
 
-  // Open browser after a short delay
-  setTimeout(() => open(url), 1000);
-});
+    // Auto-open browser
+    const open = (url) => {
+      const cmd = process.platform === 'win32' ? `start ${url}`
+        : process.platform === 'darwin' ? `open ${url}`
+        : `xdg-open ${url}`;
+      exec(cmd);
+    };
 
-// Handle port in use error
+    // Open browser after a short delay
+    setTimeout(() => open(url), 1000);
+  });
+}
+
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`\n  错误: 端口 ${PORT} 已被占用`);
-    console.error(`  请尝试使用其他端口: yxaiCode --port 8080\n`);
-    process.exit(1);
+    portAttempts++;
+    if (portAttempts < MAX_PORT_ATTEMPTS) {
+      const nextPort = currentPort + portAttempts;
+      console.log(`  端口 ${currentPort + portAttempts - 1} 已被占用，尝试端口 ${nextPort}...`);
+      startServer(nextPort);
+    } else {
+      console.error(`\n  错误: 无法找到可用端口 (已尝试 ${MAX_PORT_ATTEMPTS} 次)\n`);
+      process.exit(1);
+    }
   } else {
     console.error(`\n  服务器错误: ${err.message}\n`);
     process.exit(1);
   }
 });
+
+startServer(currentPort);

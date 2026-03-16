@@ -1,11 +1,11 @@
 {
   "name": "@yxai/code",
-  "version": "0.0.1",
-  "description": "意心Code - Claude Code 可视化交互界面",
+  "version": "0.0.2",
+  "description": "意心Code - 无门槛的ClaudeCode可视化轻量工具",
   "type": "module",
   "main": "server.js",
   "bin": {
-    "yxaiCode": "server.js"
+    "yxai": "server.js"
   },
   "scripts": {
     "start": "node server.js",
@@ -26,7 +26,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://gitee.com/ccnetcore/yxcode.git"
+    "url": "https://github.com/ccnetcore/yxaicode.git"
   },
   "engines": {
     "node": ">=18.0.0"
