@@ -122,6 +122,7 @@ PORT=8080 yxai
 | Requirement | Version |
 |-------------|---------|
 | Node.js     | >= 22.0.0 |
+| Claude Code | Installed (no configuration needed) |
 
 ---
 
