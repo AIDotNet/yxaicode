@@ -99,6 +99,15 @@ function resolveApproval(requestId, decision) {
   if (fn) fn(decision);
 }
 
+// --- Check Claude CLI ---
+function checkClaudeInstalled() {
+  return new Promise((resolve) => {
+    exec('claude --version', (err) => {
+      resolve(!err);
+    });
+  });
+}
+
 // --- Claude SDK Query ---
 async function runQuery(prompt, options, ws) {
   let sessionId = options.sessionId || null;
@@ -473,9 +482,9 @@ app.get('/api/files-flat', async (req, res) => {
   try {
     const root = req.query.cwd || process.cwd();
     const results = [];
-    const MAX = 1000;
+    const MAX = 5000;
     async function scan(dir, depth) {
-      if (depth > 5 || results.length >= MAX) return;
+      if (depth > 10 || results.length >= MAX) return;
       const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
       for (const ent of entries) {
         if (results.length >= MAX) return;
@@ -514,12 +523,21 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws) => {
   console.log('[WS] client connected');
 
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
 
     switch (msg.type) {
-      case 'claude-command':
+      case 'claude-command': {
+        const hasClaudeCli = await checkClaudeInstalled();
+        if (!hasClaudeCli) {
+          wsSend(ws, {
+            type: 'claude-error',
+            error: '意心Code 底层依赖于 Claude Code，当前未检测到 Claude 环境，请先安装 Claude Code。\n安装命令：npm install -g @anthropic-ai/claude-code',
+            sessionId: msg.sessionId || null,
+          });
+          break;
+        }
         runQuery(msg.prompt, {
           sessionId: msg.sessionId || null,
           cwd: msg.cwd || null,
@@ -528,6 +546,7 @@ wss.on('connection', (ws) => {
           apiKey: msg.apiKey || null,
         }, ws).catch((e) => console.error('[query error]', e.message));
         break;
+      }
 
       case 'permission-response':
         resolveApproval(msg.requestId, {
