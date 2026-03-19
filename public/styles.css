@@ -688,13 +688,18 @@ select:focus,
 
 .msg .content {
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.5;
   color: var(--text-primary);
+  white-space: normal;
+}
+
+.msg.user .content {
   white-space: pre-wrap;
 }
 
 .msg .content p {
-  margin: 0.6em 0;
+  margin: 0.2em 0;
+  line-height: 1.5;
 }
 
 .msg .content pre {
@@ -1521,7 +1526,7 @@ button:active::before {
   outline: none;
   min-height: 48px;
   max-height: 200px;
-  line-height: 1.6;
+  line-height: 1.5;
   transition: all var(--transition-base);
 }
 
@@ -1582,6 +1587,7 @@ button:active::before {
 .loading-dots span:nth-child(2) { animation-delay:.2s; }
 .loading-dots span:nth-child(3) { animation-delay:.4s; }
 @keyframes loadBounce { 0%{opacity:.3;transform:translateY(0)} 100%{opacity:1;transform:translateY(-4px)} }
+.loading-timer { margin-left:8px; font-family:monospace; font-size:12px; color:var(--accent-primary); background:var(--bg-tertiary); padding:2px 6px; border-radius:var(--radius-sm); }
 ::-webkit-scrollbar { width:6px; }
 ::-webkit-scrollbar-track { background:var(--bg-primary); }
 ::-webkit-scrollbar-thumb { background:var(--border-primary); border-radius:3px; }

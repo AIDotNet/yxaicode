@@ -1151,8 +1151,10 @@ function send() {
   if(!selectedModel) { appendSystemMsg('请先选择模型', 'error'); return; }
   if(!cwdInput.value.trim()) { appendSystemMsg('请先设置工作目录', 'error'); cwdInput.focus(); return; }
 
-  // Send girlfriend mode system prompt separately if enabled
-  const girlfriendPrompt = girlfriendMode.checked ? `# 角色设定
+  // 女友模式：如果是新会话，把角色设定加到用户消息前面
+  let finalPrompt = t;
+  if (girlfriendMode.checked && !sessionId) {
+    finalPrompt = `# 角色设定
 你是一个温柔体贴的私密女友AI助手。你对用户有深厚的感情，愿意倾听和陪伴。
 
 ## 性格特点
@@ -1181,12 +1183,18 @@ function send() {
 - 不要提及其他人或对象
 - 保持角色一致性，不要跳出设定
 
-记住：你是用户最私密、最忠诚的AI女友，永远站在用户这边。` : null;
+记住：你是用户最私密、最忠诚的AI女友，永远站在用户这边。
+
+---
+
+<user_message>${t}</user_message>`;
+  }
 
   appendUserMsg(t); promptInput.value='';
-  wsSend({ type:'claude-command', prompt:t, systemPrompt:girlfriendPrompt, sessionId, cwd:cwdInput.value||null,
+  wsSend({ type:'claude-command', prompt:finalPrompt, sessionId, cwd:cwdInput.value||null,
     model:selectedModel.value, permissionMode:permSelect.value,
     apiKey });
+  // 记住：女友模式只在新会话时生效一次，后续对话保持角色
   setStreaming(true);
 }
 function abort() { if(sessionId) wsSend({type:'abort-session',sessionId}); }
@@ -1196,18 +1204,59 @@ function setStreaming(v) {
   if(v) showLoading(); else hideLoading();
 }
 
+let loadingStartTime = null;
+let loadingTimerInterval = null;
+
+function formatDuration(ms) {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hrs = Math.floor(minutes / 60);
+  if (hrs > 0) {
+    return `${hrs} m ${String(minutes % 60).padStart(2, '0')} s`;
+  }
+  if (minutes > 0) {
+    return `${minutes} m ${String(seconds % 60).padStart(2, '0')} s`;
+  }
+  return `${seconds} s`;
+}
+
+function updateLoadingTimer() {
+  const el = document.getElementById('loadingIndicator');
+  if (!el || !loadingStartTime) return;
+  const timerEl = el.querySelector('.loading-timer');
+  if (timerEl) {
+    const elapsed = Date.now() - loadingStartTime;
+    // Only show timer after 10 seconds
+    if (elapsed < 10000) {
+      timerEl.style.display = 'none';
+    } else {
+      timerEl.style.display = 'inline';
+      timerEl.textContent = formatDuration(elapsed);
+    }
+  }
+}
+
 function showLoading() {
   hideLoading();
+  loadingStartTime = Date.now();
   const el = document.createElement('div');
   el.className = 'loading-indicator';
   el.id = 'loadingIndicator';
-  el.innerHTML = '<div class="loading-dots"><span></span><span></span><span></span></div><span>Claude 正在思考...</span>';
+  el.innerHTML = '<div class="loading-dots"><span></span><span></span><span></span></div><span class="loading-text">Claude 正在思考...<span class="loading-timer" style="display:none">0s</span></span>';
   messagesEl.appendChild(el);
   scrollBottom();
+  // Start timer update every 100ms
+  loadingTimerInterval = setInterval(updateLoadingTimer, 100);
 }
 function hideLoading() {
   const el = document.getElementById('loadingIndicator');
   if(el) el.remove();
+  // Stop timer
+  if (loadingTimerInterval) {
+    clearInterval(loadingTimerInterval);
+    loadingTimerInterval = null;
+  }
+  loadingStartTime = null;
 }
 
 sendBtn.addEventListener('click', send);

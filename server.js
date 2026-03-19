@@ -128,12 +128,7 @@ async function runQuery(prompt, options, ws) {
     model: options.model || 'sonnet',
     cwd: options.cwd || process.cwd(),
     tools: { type: 'preset', preset: 'claude_code' },
-    systemPrompt: options.systemPrompt
-      ? [
-          { type: 'preset', preset: 'claude_code' },
-          { type: 'text', text: options.systemPrompt }
-        ]
-      : { type: 'preset', preset: 'claude_code' },
+    system: { type: 'preset', preset: 'claude_code' },
     settingSources: ['project', 'user', 'local'],
   };
 
@@ -261,9 +256,23 @@ function parseSessionInfo(raw) {
             .map(c => c.text).join(' ');
         }
         text = text.trim();
-        // Skip if starts with "# 角色设定"
-        if (text && !text.startsWith('# 角色设定')) {
-          summary = text.slice(0, 50);
+
+        // Extract content from <user_message> tag if present
+        const userMsgMatch = text.match(/<user_message>\s*([\s\S]*?)\s*<\/user_message>/);
+        if (userMsgMatch) {
+          const userText = userMsgMatch[1].trim();
+          if (userText) {
+            summary = userText.slice(0, 50);
+          }
+        } else {
+          // Skip if starts with "# 角色设定" or contains role-play prompt patterns
+          if (text.startsWith('# 角色设定') || text.startsWith('## ')) {
+            continue;
+          }
+          // Use the text as summary if no XML tag found
+          if (text) {
+            summary = text.slice(0, 50);
+          }
         }
       }
     } catch {}
@@ -438,9 +447,17 @@ app.get('/api/browse', async (req, res) => {
     // Windows: if empty, list drive letters
     if (!target && process.platform === 'win32') {
       const { execSync } = await import('child_process');
-      const raw = execSync('wmic logicaldisk get name', { encoding: 'utf8' });
-      const drives = raw.split('\n').map(l => l.trim()).filter(l => /^[A-Z]:$/.test(l));
-      return res.json({ path: '', parent: '', dirs: drives.map(d => ({ name: d, path: d + '\\' })) });
+      try {
+        // Try PowerShell Get-PSDrive first (modern Windows)
+        const raw = execSync('powershell -Command "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root"', { encoding: 'utf8' });
+        const drives = raw.split('\n').map(l => l.trim()).filter(l => /^[A-Z]:\\?$/.test(l));
+        return res.json({ path: '', parent: '', dirs: drives.map(d => ({ name: d.replace(/\\$/, ''), path: d })) });
+      } catch {
+        // Fallback to wmic for older Windows versions
+        const raw = execSync('wmic logicaldisk get name', { encoding: 'utf8' });
+        const drives = raw.split('\n').map(l => l.trim()).filter(l => /^[A-Z]:$/.test(l));
+        return res.json({ path: '', parent: '', dirs: drives.map(d => ({ name: d, path: d + '\\' })) });
+      }
     }
     if (!target) target = os.homedir();
     const resolved = path.resolve(target);
@@ -552,7 +569,6 @@ wss.on('connection', (ws) => {
           model: msg.model || 'sonnet',
           permissionMode: msg.permissionMode || 'default',
           apiKey: msg.apiKey || null,
-          systemPrompt: msg.systemPrompt || null,
         }, ws).catch((e) => console.error('[query error]', e.message));
         break;
       }
