@@ -946,29 +946,67 @@ function renderDiffView(input) {
   }
 
   const filePath = input.file_path || '(unknown file)';
-  const oldLines = input.old_string.split('\\n');
-  const newLines = input.new_string.split('\\n');
 
-  let html = `<div class="diff-view"><div class="diff-file">文件: ${escHtml(filePath)}</div>`;
+  // 根据文件扩展名推断高亮语言
+  const ext = filePath.split('.').pop().toLowerCase();
+  const langMap = {
+    js: 'javascript', ts: 'typescript', jsx: 'javascript', tsx: 'typescript',
+    css: 'css', scss: 'scss', less: 'less',
+    html: 'xml', htm: 'xml', xml: 'xml', vue: 'xml',
+    py: 'python', rb: 'ruby', go: 'go', rs: 'rust',
+    java: 'java', kt: 'kotlin', swift: 'swift',
+    json: 'json', yaml: 'yaml', yml: 'yaml', toml: 'ini',
+    md: 'markdown', sh: 'bash', bash: 'bash', zsh: 'bash',
+    sql: 'sql', php: 'php', cs: 'csharp', cpp: 'cpp', c: 'c',
+  };
+  const lang = langMap[ext] || 'plaintext';
 
-  // Simple line-by-line diff
-  const maxLen = Math.max(oldLines.length, newLines.length);
-  for (let i = 0; i < maxLen; i++) {
-    const oldLine = oldLines[i];
-    const newLine = newLines[i];
-
-    if (oldLine !== undefined && (newLine === undefined || oldLine !== newLine)) {
-      html += `<div class="diff-line removed">${escHtml(oldLine)}</div>`;
-    }
-    if (newLine !== undefined && (oldLine === undefined || oldLine !== newLine)) {
-      html += `<div class="diff-line added">${escHtml(newLine)}</div>`;
-    }
-    if (oldLine === newLine && oldLine !== undefined) {
-      html += `<div class="diff-line context">${escHtml(oldLine)}</div>`;
+  function highlightLine(line) {
+    if (!window.hljs || lang === 'plaintext') return escHtml(line);
+    try {
+      return hljs.highlight(line, { language: lang, ignoreIllegals: true }).value;
+    } catch(e) {
+      return escHtml(line);
     }
   }
 
-  html += '</div>';
+  // 使用 diff-match-patch 做精确 LCS 行级 diff
+  let diffs;
+  if (window.diff_match_patch) {
+    const dmp = new diff_match_patch();
+    const a = dmp.diff_linesToChars_(input.old_string, input.new_string);
+    const linesDiff = dmp.diff_main(a.chars1, a.chars2, false);
+    dmp.diff_charsToLines_(linesDiff, a.lineArray);
+    dmp.diff_cleanupSemantic(linesDiff);
+    diffs = linesDiff;
+  } else {
+    // fallback: 简单行对比
+    diffs = [[-1, input.old_string], [1, input.new_string]];
+  }
+
+  let html = `<div class="diff-view">`;
+  html += `<div class="diff-file"><span class="diff-file-icon">📄</span>${escHtml(filePath)}</div>`;
+  html += `<div class="diff-body">`;
+
+  let lineNum = 1;
+  for (const [op, text] of diffs) {
+    const lines = text.split('\n');
+    const effectiveLines = lines[lines.length - 1] === '' ? lines.slice(0, -1) : lines;
+
+    for (const line of effectiveLines) {
+      if (op === 0) {
+        html += `<div class="diff-line context"><span class="diff-ln">${lineNum}</span><span class="diff-prefix"> </span><code>${highlightLine(line)}</code></div>`;
+        lineNum++;
+      } else if (op === -1) {
+        html += `<div class="diff-line removed"><span class="diff-ln"></span><span class="diff-prefix">-</span><code>${highlightLine(line)}</code></div>`;
+      } else if (op === 1) {
+        html += `<div class="diff-line added"><span class="diff-ln">${lineNum}</span><span class="diff-prefix">+</span><code>${highlightLine(line)}</code></div>`;
+        lineNum++;
+      }
+    }
+  }
+
+  html += '</div></div>';
   return html;
 }
 
