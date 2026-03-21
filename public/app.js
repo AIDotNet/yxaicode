@@ -13,7 +13,8 @@ marked.setOptions({
 
 const $ = s => document.querySelector(s);
 const modelSelectDisplay=$('#modelSelectDisplay'), modelSelectDropdown=$('#modelSelectDropdown'),
-  setModelDisplay=$('#setModelDisplay'), setModelDropdown=$('#setModelDropdown'),
+  setModelSearch=$('#setModelSearch'), setModelDropdown=$('#setModelDropdown'),
+  advancedToggle=$('#advancedToggle'), advancedContent=$('#advancedContent'),
   permSelect=$('#permSelect'), girlfriendMode=$('#girlfriendMode'), cwdInput=$('#cwdInput'),
   cwdDropdown=$('#cwdDropdown'),
   connStatus=$('#connStatus'), messagesEl=$('#messages'), permBanner=$('#permBanner'),
@@ -21,6 +22,7 @@ const modelSelectDisplay=$('#modelSelectDisplay'), modelSelectDropdown=$('#model
   newBtn=$('#newBtn'), sessionInfo=$('#sessionInfo'),
   settingsBtn=$('#settingsBtn'), settingsOverlay=$('#settingsOverlay'),
   setApiKey=$('#setApiKey'),
+  setBaseUrl=$('#setBaseUrl'), testBaseUrlBtn=$('#testBaseUrlBtn'), testResult=$('#testResult'),
   settingsSaveBtn=$('#settingsSaveBtn'),
   settingsCloseBtn=$('#settingsCloseBtn'), settingsSaved=$('#settingsSaved'),
   clearPermissionsBtn=$('#clearPermissionsBtn'), permissionCount=$('#permissionCount'),
@@ -33,6 +35,7 @@ const modelSelectDisplay=$('#modelSelectDisplay'), modelSelectDropdown=$('#model
   fileRefreshBtn=$('#fileRefreshBtn'),
   fileViewer=$('#fileViewer'), fvPath=$('#fvPath'), fvContent=$('#fvContent'), fvCloseBtn=$('#fvCloseBtn'),
   cwdBrowseBtn=$('#cwdBrowseBtn'),
+  cwdOpenBtn=$('#cwdOpenBtn'),
   folderBrowser=$('#folderBrowser'), fbPath=$('#fbPath'), fbBody=$('#fbBody'),
   fbSelectBtn=$('#fbSelectBtn'), fbCancelBtn=$('#fbCancelBtn'), fbCloseBtn=$('#fbCloseBtn'),
   sidebarSearch=$('#sidebarSearch'),
@@ -104,6 +107,7 @@ let expandedProjects = new Set(); // Fix 6: track expanded sidebar projects
 let selectedModel = null; // Current selected model object
 let selectedSettingsModel = null; // Settings model selection
 let modelsData = []; // All available models
+let customModels = []; // User-added custom models
 let rememberedPermissions = new Set(); // Remembered permission rules
 let cwdHistory = []; // Working directory history (max 10)
 
@@ -283,8 +287,9 @@ This file provides guidance to Claude Code when working with code in this reposi
 
   appendUserMsg('/init');
   promptInput.value = '';
+  const baseUrl = localStorage.getItem('yxcode_baseUrl') || '';
   wsSend({ type: 'claude-command', prompt: initPrompt, sessionId, cwd: cwdInput.value || null,
-    model: selectedModel.value, permissionMode: permSelect.value, apiKey });
+    model: selectedModel.value, permissionMode: permSelect.value, apiKey, baseUrl });
   setStreaming(true);
 }
 
@@ -471,16 +476,90 @@ function selectModel(model) {
 
 function selectSettingsModel(model) {
   selectedSettingsModel = model;
-  const icon = setModelDisplay.querySelector('.model-icon');
-  const label = setModelDisplay.querySelector('.model-label');
-  if (model.icon) {
-    icon.src = model.icon;
-    icon.style.display = 'block';
-  } else {
-    icon.style.display = 'none';
-  }
-  label.textContent = model.label;
+  setModelSearch.value = model.label;
+  setModelSearch._selectedLabel = model.label; // 记住选中时的文本
   setModelDropdown.classList.remove('visible');
+}
+
+// 加载自定义模型
+function loadCustomModels() {
+  try {
+    const saved = localStorage.getItem('yxcode_customModels');
+    if (saved) customModels = JSON.parse(saved);
+  } catch(e) { customModels = []; }
+}
+
+function saveCustomModels() {
+  localStorage.setItem('yxcode_customModels', JSON.stringify(customModels));
+}
+
+function addCustomModel(modelId) {
+  modelId = modelId.trim();
+  if (!modelId) return null;
+  // 检查是否已存在于意心AI模型或自定义模型中
+  const allModels = getAllModels();
+  const existing = allModels.find(m => m.value === modelId);
+  if (existing) return existing;
+  const newModel = { value: modelId, label: modelId, description: '', icon: '', provider: '自定义', isCustom: true };
+  customModels.push(newModel);
+  saveCustomModels();
+  return newModel;
+}
+
+function removeCustomModel(modelId) {
+  customModels = customModels.filter(m => m.value !== modelId);
+  saveCustomModels();
+  renderSettingsModelDropdown();
+}
+
+function getAllModels() {
+  return [...modelsData.map(m => ({...m, isCustom: false})), ...customModels];
+}
+
+function renderSettingsModelDropdown(filter = '') {
+  setModelDropdown.innerHTML = '';
+  const allModels = getAllModels();
+  const lowerFilter = filter.toLowerCase();
+  const filtered = lowerFilter ? allModels.filter(m =>
+    m.value.toLowerCase().includes(lowerFilter) ||
+    m.label.toLowerCase().includes(lowerFilter) ||
+    (m.provider && m.provider.toLowerCase().includes(lowerFilter))
+  ) : allModels;
+
+  if (filtered.length === 0 && filter) {
+    const hint = document.createElement('div');
+    hint.className = 'model-search-hint';
+    hint.textContent = `按回车添加自定义模型「${filter}」`;
+    setModelDropdown.appendChild(hint);
+  }
+
+  filtered.forEach(m => {
+    const opt = document.createElement('div');
+    opt.className = 'model-select-option';
+    opt.dataset.value = m.value;
+    const iconHTML = m.icon ? `<img class="model-icon" src="${m.icon}" alt="">` : '<div class="model-icon-placeholder"></div>';
+    const badge = m.isCustom
+      ? '<span class="model-badge model-badge-custom">自定义</span>'
+      : '<span class="model-badge model-badge-yxai">意心AI</span>';
+    const deleteBtn = m.isCustom
+      ? '<button class="model-delete-btn" title="删除自定义模型">✕</button>'
+      : '';
+    opt.innerHTML = `${iconHTML}<span class="model-label">${escHtml(m.label)}</span>${badge}${m.provider && !m.isCustom ? `<span class="model-provider">${escHtml(m.provider)}</span>` : ''}${deleteBtn}`;
+    opt.addEventListener('click', (e) => {
+      if (e.target.classList.contains('model-delete-btn')) {
+        e.stopPropagation();
+        removeCustomModel(m.value);
+        // 如果删除的是当前选中的模型，清空选择
+        if (selectedSettingsModel && selectedSettingsModel.value === m.value) {
+          selectedSettingsModel = null;
+          setModelSearch.value = '';
+        }
+        return;
+      }
+      selectSettingsModel(m);
+    });
+    setModelDropdown.appendChild(opt);
+  });
 }
 
 modelSelectDisplay.addEventListener('click', (e) => {
@@ -488,16 +567,53 @@ modelSelectDisplay.addEventListener('click', (e) => {
   modelSelectDropdown.classList.toggle('visible');
 });
 
-setModelDisplay.addEventListener('click', (e) => {
-  e.stopPropagation();
-  setModelDropdown.classList.toggle('visible');
+// 设置页面模型搜索输入框事件
+setModelSearch.addEventListener('focus', () => {
+  // focus 时始终显示全部列表（用户还没输入新内容）
+  renderSettingsModelDropdown('');
+  setModelDropdown.classList.add('visible');
+});
+
+setModelSearch.addEventListener('input', () => {
+  const val = setModelSearch.value;
+  // 如果内容和选中时一致，说明用户没有修改，显示全部
+  const filter = (val === setModelSearch._selectedLabel) ? '' : val;
+  renderSettingsModelDropdown(filter);
+  setModelDropdown.classList.add('visible');
+});
+
+setModelSearch.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const val = setModelSearch.value.trim();
+    if (!val) return;
+    // 先在已有模型中查找
+    const allModels = getAllModels();
+    let found = allModels.find(m => m.value === val || m.label === val);
+    if (!found) {
+      // 添加为自定义模型
+      found = addCustomModel(val);
+    }
+    if (found) {
+      selectSettingsModel(found);
+      renderSettingsModelDropdown();
+    }
+  }
+});
+
+// 高级设置折叠
+advancedToggle.addEventListener('click', () => {
+  const isHidden = advancedContent.classList.contains('hidden');
+  advancedContent.classList.toggle('hidden');
+  advancedToggle.querySelector('.advanced-arrow').textContent = isHidden ? '▼' : '▶';
 });
 
 document.addEventListener('click', (e) => {
   if (!modelSelectDisplay.contains(e.target) && !modelSelectDropdown.contains(e.target)) {
     modelSelectDropdown.classList.remove('visible');
   }
-  if (!setModelDisplay.contains(e.target) && !setModelDropdown.contains(e.target)) {
+  const searchWrapper = setModelSearch.closest('.model-search-wrapper');
+  if (searchWrapper && !searchWrapper.contains(e.target)) {
     setModelDropdown.classList.remove('visible');
   }
 });
@@ -523,32 +639,27 @@ const TOOL_ICON = {
   } catch(e) { console.error('[version]', e); }
 
   try {
-    const models = await (await fetch('/api/models')).json();
+    const savedBaseUrl = localStorage.getItem('yxcode_baseUrl') || '';
+    const modelsUrl = savedBaseUrl ? `/api/models?baseUrl=${encodeURIComponent(savedBaseUrl)}` : '/api/models';
+    const models = await (await fetch(modelsUrl)).json();
     modelsData = models;
 
-    // Render main model dropdown
+    // Render main model dropdown (includes custom models)
+    loadCustomModels();
     modelSelectDropdown.innerHTML = '';
-    models.forEach(m => {
+    const allMainModels = [...models.map(m => ({...m, isCustom: false})), ...customModels];
+    allMainModels.forEach(m => {
       const opt = document.createElement('div');
       opt.className = 'model-select-option';
       opt.dataset.value = m.value;
-      const iconHTML = m.icon ? `<img class="model-icon" src="${m.icon}" alt="">` : '<div class="model-icon" style="background:var(--bg3)"></div>';
+      const iconHTML = m.icon ? `<img class="model-icon" src="${m.icon}" alt="">` : '<div class="model-icon-placeholder"></div>';
       opt.innerHTML = `${iconHTML}<span class="model-label">${escHtml(m.label)}</span>${m.provider ? `<span class="model-provider">${escHtml(m.provider)}</span>` : ''}`;
       opt.addEventListener('click', () => selectModel(m));
       modelSelectDropdown.appendChild(opt);
     });
 
-    // Render settings model dropdown
-    setModelDropdown.innerHTML = '';
-    models.forEach(m => {
-      const opt = document.createElement('div');
-      opt.className = 'model-select-option';
-      opt.dataset.value = m.value;
-      const iconHTML = m.icon ? `<img class="model-icon" src="${m.icon}" alt="">` : '<div class="model-icon" style="background:var(--bg3)"></div>';
-      opt.innerHTML = `${iconHTML}<span class="model-label">${escHtml(m.label)}</span>${m.provider ? `<span class="model-provider">${escHtml(m.provider)}</span>` : ''}`;
-      opt.addEventListener('click', () => selectSettingsModel(m));
-      setModelDropdown.appendChild(opt);
-    });
+    // Render settings model dropdown with search
+    renderSettingsModelDropdown();
 
     // Store models data for header display
     window._yxModels = models;
@@ -556,7 +667,8 @@ const TOOL_ICON = {
     // Restore saved model
     const savedModelId = localStorage.getItem('yxcode_model');
     if (savedModelId) {
-      const savedModel = models.find(m => m.value === savedModelId);
+      const allModels = getAllModels();
+      const savedModel = allModels.find(m => m.value === savedModelId);
       if (savedModel) {
         selectModel(savedModel);
         selectSettingsModel(savedModel);
@@ -568,6 +680,7 @@ const TOOL_ICON = {
   } catch(e) { console.error('[loadModels]', e); }
   cwdInput.value = localStorage.getItem('yxcode_cwd') || '';
   setApiKey.value = localStorage.getItem('yxcode_apiKey') || '';
+  setBaseUrl.value = localStorage.getItem('yxcode_baseUrl') || '';
   girlfriendMode.checked = localStorage.getItem('yxcode_girlfriendMode') === 'true';
 
   // Load remembered permissions
@@ -595,6 +708,27 @@ const TOOL_ICON = {
   settingsSaveBtn.addEventListener('click', saveSettings);
   clearPermissionsBtn.addEventListener('click', clearRememberedPermissions);
 
+  // Test Base URL connection
+  testBaseUrlBtn.addEventListener('click', async () => {
+    const baseUrl = setBaseUrl.value.trim() || 'https://yxai.chat';
+    testResult.className = 'test-result loading';
+    testResult.textContent = '正在测试连接...';
+    try {
+      const res = await fetch(`/api/test-connection?baseUrl=${encodeURIComponent(baseUrl)}`);
+      const data = await res.json();
+      if (data.success) {
+        testResult.className = 'test-result success';
+        testResult.textContent = `✓ 连接成功${data.message ? '：' + data.message : ''}`;
+      } else {
+        testResult.className = 'test-result error';
+        testResult.textContent = `✗ 连接失败：${data.message || '未知错误'}`;
+      }
+    } catch (e) {
+      testResult.className = 'test-result error';
+      testResult.textContent = `✗ 连接失败：${e.message}`;
+    }
+  });
+
   // Update permission count when opening settings
   settingsBtn.addEventListener('click', updatePermissionCount);
   // If no API key configured, auto-open settings
@@ -606,10 +740,23 @@ const TOOL_ICON = {
 
 function saveSettings() {
   localStorage.setItem('yxcode_apiKey', setApiKey.value.trim());
+  localStorage.setItem('yxcode_baseUrl', setBaseUrl.value.trim());
   if (selectedSettingsModel) {
     localStorage.setItem('yxcode_model', selectedSettingsModel.value);
-    // Update main model select
+    // Update main model select and header dropdown (include custom models)
     selectModel(selectedSettingsModel);
+    // Re-render main model dropdown to include any new custom models
+    modelSelectDropdown.innerHTML = '';
+    const allMainModels = [...modelsData.map(m => ({...m, isCustom: false})), ...customModels];
+    allMainModels.forEach(m => {
+      const opt = document.createElement('div');
+      opt.className = 'model-select-option';
+      opt.dataset.value = m.value;
+      const iconHTML = m.icon ? `<img class="model-icon" src="${m.icon}" alt="">` : '<div class="model-icon-placeholder"></div>';
+      opt.innerHTML = `${iconHTML}<span class="model-label">${escHtml(m.label)}</span>${m.provider ? `<span class="model-provider">${escHtml(m.provider)}</span>` : ''}`;
+      opt.addEventListener('click', () => selectModel(m));
+      modelSelectDropdown.appendChild(opt);
+    });
   }
   settingsSaved.classList.add('show');
   setTimeout(() => settingsSaved.classList.remove('show'), 2000);
@@ -1293,9 +1440,10 @@ function send() {
   }
 
   appendUserMsg(t); promptInput.value='';
+  const baseUrl = localStorage.getItem('yxcode_baseUrl') || '';
   wsSend({ type:'claude-command', prompt:finalPrompt, sessionId, cwd:cwdInput.value||null,
     model:selectedModel.value, permissionMode:permSelect.value,
-    apiKey });
+    apiKey, baseUrl });
   // 记住：女友模式只在新会话时生效一次，后续对话保持角色
   setStreaming(true);
 }
@@ -1426,6 +1574,68 @@ cwdInput.addEventListener('change', () => {
   fileListCache = null;
   fileListCwd = null;
 });
+
+// ========== Input Resize Handle ==========
+(function initInputResize() {
+  const handle = document.getElementById('inputResizeHandle');
+  const textarea = document.getElementById('promptInput');
+  if (!handle || !textarea) return;
+  let startY, startH, dragging = false;
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    dragging = true;
+    startY = e.clientY;
+    startH = textarea.offsetHeight;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const delta = startY - e.clientY;
+    const newH = Math.min(Math.max(startH + delta, 48), window.innerHeight * 0.6);
+    textarea.style.height = newH + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    try { localStorage.setItem('inputHeight', textarea.style.height); } catch(e) {}
+  });
+
+  // 恢复上次保存的高度
+  try {
+    const saved = localStorage.getItem('inputHeight');
+    if (saved) textarea.style.height = saved;
+  } catch(e) {}
+
+  // 触屏支持
+  handle.addEventListener('touchstart', (e) => {
+    dragging = true;
+    startY = e.touches[0].clientY;
+    startH = textarea.offsetHeight;
+    handle.classList.add('dragging');
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!dragging) return;
+    const delta = startY - e.touches[0].clientY;
+    const newH = Math.min(Math.max(startH + delta, 48), window.innerHeight * 0.6);
+    textarea.style.height = newH + 'px';
+  }, { passive: true });
+
+  document.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    try { localStorage.setItem('inputHeight', textarea.style.height); } catch(e) {}
+  });
+})();
 
 // ========== Sidebar / File Panel Toggle ==========
 sidebarToggle.addEventListener('click', () => sidebar.classList.toggle('collapsed'));
@@ -1746,6 +1956,11 @@ async function viewFile(filePath) {
 let fbCurrentPath = '';
 
 cwdBrowseBtn.addEventListener('click', () => openFolderBrowser(cwdInput.value || ''));
+cwdOpenBtn.addEventListener('click', () => {
+  const dir = cwdInput.value || '';
+  if (!dir) return;
+  fetch('/api/open-folder?path=' + encodeURIComponent(dir)).catch(() => {});
+});
 fbCloseBtn.addEventListener('click', closeFolderBrowser);
 fbCancelBtn.addEventListener('click', closeFolderBrowser);
 folderBrowser.addEventListener('click', e => { if(e.target === folderBrowser) closeFolderBrowser(); });

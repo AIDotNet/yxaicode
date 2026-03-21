@@ -112,12 +112,13 @@ function checkClaudeInstalled() {
 async function runQuery(prompt, options, ws) {
   let sessionId = options.sessionId || null;
 
-  // Always use fixed base URL, only inject API Key from options
+  // Use custom base URL if provided, otherwise use default
+  const effectiveBaseUrl = options.baseUrl || API_BASE_URL;
   const prevBaseUrl = process.env.ANTHROPIC_BASE_URL;
   const prevApiKey = process.env.ANTHROPIC_API_KEY;
 
-  process.env.ANTHROPIC_BASE_URL = API_BASE_URL;
-  console.log(`[config] ANTHROPIC_BASE_URL = ${API_BASE_URL}`);
+  process.env.ANTHROPIC_BASE_URL = effectiveBaseUrl;
+  console.log(`[config] ANTHROPIC_BASE_URL = ${effectiveBaseUrl}`);
 
   if (options.apiKey) {
     process.env.ANTHROPIC_API_KEY = options.apiKey;
@@ -291,12 +292,53 @@ app.get('/api/version', (_req, res) => {
   res.json({ version: pkgJson.version });
 });
 
-// API: list models (proxy from external API)
-app.get('/api/models', async (_req, res) => {
+// API: test connection to a base URL
+app.get('/api/test-connection', async (req, res) => {
+  const baseUrl = (req.query.baseUrl || API_BASE_URL).replace(/\/+$/, '');
   try {
     const https = await import('https');
-    const url = `${API_BASE_URL}/prod-api/model?ModelApiTypes=1&SkipCount=1&MaxResultCount=100`;
-    https.get(url, (apiRes) => {
+    const http = await import('http');
+    const urlObj = new URL(`${baseUrl}/prod-api/model?ModelApiTypes=1&SkipCount=1&MaxResultCount=1`);
+    const client = urlObj.protocol === 'https:' ? https : http;
+    const request = client.get(urlObj.href, { timeout: 10000 }, (apiRes) => {
+      let data = '';
+      apiRes.on('data', chunk => data += chunk);
+      apiRes.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.items && Array.isArray(json.items)) {
+            res.json({ success: true, message: `已连接，发现 ${json.items.length} 个模型` });
+          } else {
+            res.json({ success: false, message: '响应格式不正确' });
+          }
+        } catch (e) {
+          res.json({ success: false, message: '响应解析失败：' + e.message });
+        }
+      });
+    });
+    request.on('error', (e) => {
+      res.json({ success: false, message: '连接失败：' + e.message });
+    });
+    request.on('timeout', () => {
+      request.destroy();
+      res.json({ success: false, message: '连接超时' });
+    });
+  } catch (e) {
+    res.json({ success: false, message: e.message });
+  }
+});
+
+// API: list models (proxy from external API)
+app.get('/api/models', async (req, res) => {
+  const baseUrl = (req.query.baseUrl || API_BASE_URL).replace(/\/+$/, '');
+  try {
+    const https = await import('https');
+    const http = await import('http');
+    const urlStr = `${baseUrl}/prod-api/model?ModelApiTypes=1&SkipCount=1&MaxResultCount=100`;
+    const urlObj = new URL(urlStr);
+    const client = urlObj.protocol === 'https:' ? https : http;
+    const url = urlObj.href;
+    client.get(url, (apiRes) => {
       let data = '';
       apiRes.on('data', chunk => data += chunk);
       apiRes.on('end', () => {
@@ -440,6 +482,19 @@ app.get('/api/projects/:name/sessions/:id/messages', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// API: open folder in system file explorer
+app.get('/api/open-folder', (req, res) => {
+  const dir = req.query.path;
+  if (!dir) return res.status(400).json({ error: 'path required' });
+  const cmd = process.platform === 'win32' ? `explorer "${dir}"`
+    : process.platform === 'darwin' ? `open "${dir}"`
+    : `xdg-open "${dir}"`;
+  exec(cmd, (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ ok: true });
+  });
+});
+
 // API: browse directories (Fix 5: folder picker)
 app.get('/api/browse', async (req, res) => {
   try {
@@ -567,6 +622,7 @@ wss.on('connection', (ws) => {
           model: msg.model || 'sonnet',
           permissionMode: msg.permissionMode || 'default',
           apiKey: msg.apiKey || null,
+          baseUrl: msg.baseUrl || null,
         }, ws).catch((e) => console.error('[query error]', e.message));
         break;
       }

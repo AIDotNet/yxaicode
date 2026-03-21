@@ -99,6 +99,7 @@
       <input id="cwdInput" type="text" placeholder="项目路径..." />
       <div id="cwdDropdown" class="cwd-dropdown"></div>
     </div>
+    <button id="cwdOpenBtn" class="btn-browse" title="打开目录">📁 打开</button>
     <button id="cwdBrowseBtn" class="btn-browse" title="浏览文件夹">📂 浏览</button>
     <button id="filePanelToggle" class="btn-icon file-toggle" title="文件浏览"><span class="toggle-arrow">▶</span></button>
   </div>
@@ -106,16 +107,32 @@
   <div id="settingsOverlay" class="settings-overlay hidden">
     <div class="settings-panel">
       <h2>⚙ 设置</h2>
-      <div class="sg"><label>API Key</label><input id="setApiKey" type="password" placeholder="yi-xxxxx..." /><div class="hint">请输入意心AI的API Key（yi-开头）</div></div>
+      <div class="sg"><label>API Key</label><input id="setApiKey" type="password" placeholder="yi-xxxxx..." /><div class="hint">请输入API Key（意心AI ApiKey yi- 开头）</div></div>
       <div class="sg">
         <label>模型</label>
-        <div class="model-select-wrapper" style="width:100%;">
-          <div id="setModelDisplay" class="model-select-display" style="min-width:100%;">
-            <img class="model-icon" src="" alt="" style="display:none;">
-            <span class="model-label">选择模型</span>
-            <span class="model-arrow">▼</span>
+        <div class="model-search-wrapper" style="width:100%;">
+          <div class="model-search-input-row">
+            <input id="setModelSearch" type="text" placeholder="搜索或输入自定义模型ID，回车添加..." autocomplete="off" />
           </div>
-          <div id="setModelDropdown" class="model-select-dropdown"></div>
+          <div id="setModelDropdown" class="model-select-dropdown model-search-dropdown"></div>
+        </div>
+      </div>
+      <!-- 高级设置（折叠） -->
+      <div class="sg advanced-settings-group">
+        <div class="advanced-toggle" id="advancedToggle">
+          <span class="advanced-arrow">▶</span>
+          <label>高级设置</label>
+        </div>
+        <div class="advanced-content hidden" id="advancedContent">
+          <div class="sg">
+            <label>Base URL</label>
+            <div class="base-url-row">
+              <input id="setBaseUrl" type="text" placeholder="https://yxai.chat" />
+              <button id="testBaseUrlBtn" class="btn-secondary btn-test">测试</button>
+            </div>
+            <div class="hint">API 服务地址，留空则使用默认地址 https://yxai.chat</div>
+            <div id="testResult" class="test-result"></div>
+          </div>
         </div>
       </div>
       <div class="sg">
@@ -129,6 +146,7 @@
   <main id="chatArea"><div id="messages"></div><div id="permBanner" class="hidden"></div></main>
   <footer id="inputArea">
     <div id="cmdDropdown" class="cmd-dropdown"></div>
+    <div id="inputResizeHandle" class="input-resize-handle"></div>
     <div class="input-row">
       <textarea id="promptInput" rows="3" placeholder="输入消息... (Enter 发送, Shift+Enter 换行, / 命令, @ 文件)"></textarea>
       <div class="btn-col">
@@ -144,9 +162,10 @@
   <!-- File Panel -->
   <aside id="filePanel">
     <div class="filepanel-header">
-      <span>文件浏览</span>
+      <span>工作目录浏览</span>
       <button id="fileRefreshBtn" class="btn-icon" title="刷新">🔄</button>
     </div>
+    <div class="filepanel-hint">💡 支持拖动文件到对话输入框</div>
     <div class="filepanel-body" id="fileTreeBody"></div>
   </aside>
 </div>
