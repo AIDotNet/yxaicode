@@ -1498,6 +1498,29 @@ button:active::before {
   flex-shrink: 0;
 }
 
+/* Fullscreen Button */
+.btn-fullscreen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-base);
+}
+.btn-fullscreen:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent-primary);
+  transform: scale(1.1);
+}
+.btn-fullscreen svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
 /* Input Area - Modern & Clean */
 #inputArea {
   padding: var(--space-lg) var(--space-xl);
@@ -1773,7 +1796,6 @@ button:active::before {
   color: var(--text-tertiary);
   padding: var(--space-md) var(--space-lg) var(--space-xs);
   letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 
 .session-item {

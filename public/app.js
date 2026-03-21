@@ -72,6 +72,33 @@ themeToggleBtn.addEventListener('click', () => {
   }
 })();
 
+// --- Fullscreen Toggle ---
+const fullscreenBtn = document.getElementById('fullscreenBtn');
+const fullscreenIconExpand = document.getElementById('fullscreenIconExpand');
+const fullscreenIconCompress = document.getElementById('fullscreenIconCompress');
+
+function applyFullscreenIcon(isFs) {
+  if (isFs) {
+    fullscreenIconExpand.style.display = 'none';
+    fullscreenIconCompress.style.display = '';
+  } else {
+    fullscreenIconExpand.style.display = '';
+    fullscreenIconCompress.style.display = 'none';
+  }
+}
+
+fullscreenBtn.addEventListener('click', () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen().catch(() => {});
+  }
+});
+
+document.addEventListener('fullscreenchange', () => {
+  applyFullscreenIcon(!!document.fullscreenElement);
+});
+
 let ws=null, sessionId=null, isStreaming=false, streamingEl=null, streamBuf='', flushTimer=null;
 let expandedProjects = new Set(); // Fix 6: track expanded sidebar projects
 let selectedModel = null; // Current selected model object
