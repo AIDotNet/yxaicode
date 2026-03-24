@@ -34,6 +34,7 @@ const modelSelectDisplay=$('#modelSelectDisplay'), modelSelectDropdown=$('#model
   filePanelToggle=$('#filePanelToggle'),
   fileRefreshBtn=$('#fileRefreshBtn'),
   fileViewer=$('#fileViewer'), fvPath=$('#fvPath'), fvContent=$('#fvContent'), fvCloseBtn=$('#fvCloseBtn'),
+  fvInsertBtn=$('#fvInsertBtn'), fvCopyBtn=$('#fvCopyBtn'),
   cwdBrowseBtn=$('#cwdBrowseBtn'),
   cwdOpenBtn=$('#cwdOpenBtn'),
   folderBrowser=$('#folderBrowser'), fbPath=$('#fbPath'), fbBody=$('#fbBody'),
@@ -246,6 +247,7 @@ const SLASH_COMMANDS = [
   { cmd: '/help', label: '/help', desc: '显示所有命令', icon: '❓', handler: () => { showHelp(); hideDropdown(); } },
   { cmd: '/model', label: '/model', desc: '显示当前模型信息', icon: '🤖', handler: () => { showModelInfo(); hideDropdown(); } },
   { cmd: '/init', label: '/init', desc: '分析项目并生成 CLAUDE.md', icon: '📋', handler: () => { runInit(); hideDropdown(); } },
+  { cmd: '/commit', label: '/commit', desc: 'Git 提交助手', icon: '📝', handler: () => { runCommit(); hideDropdown(); } },
 ];
 
 function showHelp() {
@@ -269,34 +271,41 @@ function runInit() {
   if (!cwdInput.value.trim()) { appendSystemMsg('请先设置工作目录', 'error'); cwdInput.focus(); return; }
   if (isStreaming) { appendSystemMsg('请等待当前任务完成', 'error'); return; }
 
-  const initPrompt = `Please analyze this codebase and create a CLAUDE.md file, which will be given to future instances of Claude Code to operate in this repository.
+  fetch('/prompt/INIT_PROJECT.md').then(res => res.text()).then(initPrompt => {
+    appendUserMsg('/init');
+    promptInput.value = '';
+    const baseUrl = localStorage.getItem('yxcode_baseUrl') || '';
+    wsSend({ type: 'claude-command', prompt: initPrompt, sessionId, cwd: cwdInput.value || null,
+      model: selectedModel.value, permissionMode: permSelect.value, apiKey, baseUrl });
+    setStreaming(true);
+  }).catch(e => appendSystemMsg('加载提示词失败: ' + e.message, 'error'));
+}
 
-What to add:
+async function runCommit() {
+  const apiKey = localStorage.getItem('yxcode_apiKey') || '';
+  if (!apiKey) { appendSystemMsg('请先在设置中配置 API Key', 'error'); return; }
+  if (!selectedModel) { appendSystemMsg('请先选择模型', 'error'); return; }
+  if (!cwdInput.value.trim()) { appendSystemMsg('请先设置工作目录', 'error'); cwdInput.focus(); return; }
+  if (isStreaming) { appendSystemMsg('请等待当前任务完成', 'error'); return; }
 
-1. Commands that will be commonly used, such as how to build, lint, and run tests. Include the necessary commands to develop in this codebase, such as how to run a single test.
-2. High-level code architecture and structure so that future instances can be productive more quickly. Focus on the "big picture" architecture that requires reading multiple files to understand
+  try {
+    const res = await fetch(`/api/git/status?cwd=${encodeURIComponent(cwdInput.value)}`);
+    const data = await res.json();
+    if (!res.ok) { appendSystemMsg('获取 git 状态失败: ' + data.error, 'error'); return; }
 
-Usage notes:
+    const promptRes = await fetch('/prompt/GIT_COMMIT.md');
+    const promptText = await promptRes.text();
+    const commitPrompt = `${promptText}\n\n当前 git 状态和变更:\n\`\`\`\n${data.output}\n\`\`\`\n\n请分析以上变更，生成符合规范的 commit 信息。只输出 commit 信息内容，不要有其他说明文字。`;
 
-- If there's already a CLAUDE.md, suggest improvements to it.
-- When you make the initial CLAUDE.md, do not repeat yourself and do not include obvious instructions like "Provide helpful error messages to users", "Write unit tests for all new utilities", "Never include sensitive information (API keys, tokens) in code or commits"
-- Avoid listing every component or file structure that can be easily discovered
-- Don't include generic development practices
-- If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (in .github/copilot-instructions.md), make sure to include the important parts.
-- If there is a README.md, make sure to include the important parts.
-- Do not make up information such as "Common Development Tasks", "Tips for Development", "Support and Documentation" unless this is expressly included in other files that you read.
-- Be sure to prefix the file with the following text:
-
-# CLAUDE.md
-
-This file provides guidance to Claude Code when working with code in this repository.`;
-
-  appendUserMsg('/init');
-  promptInput.value = '';
-  const baseUrl = localStorage.getItem('yxcode_baseUrl') || '';
-  wsSend({ type: 'claude-command', prompt: initPrompt, sessionId, cwd: cwdInput.value || null,
-    model: selectedModel.value, permissionMode: permSelect.value, apiKey, baseUrl });
-  setStreaming(true);
+    appendUserMsg('/commit');
+    promptInput.value = '';
+    const baseUrl = localStorage.getItem('yxcode_baseUrl') || '';
+    wsSend({ type: 'claude-command', prompt: commitPrompt, sessionId, cwd: cwdInput.value,
+      model: selectedModel.value, permissionMode: permSelect.value, apiKey, baseUrl });
+    setStreaming(true);
+  } catch(e) {
+    appendSystemMsg('执行失败: ' + e.message, 'error');
+  }
 }
 
 function rewindLastMessage() {
@@ -1496,7 +1505,7 @@ function scrollBottom() { const a=$('#chatArea'); requestAnimationFrame(()=>{a.s
 function escHtml(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
 
 // ========== Send / Abort / New ==========
-function send() {
+async function send() {
   const t=promptInput.value.trim(); if((!t && pendingImages.length===0)||isStreaming) return;
 
   // Intercept slash commands
@@ -1518,43 +1527,16 @@ function send() {
   if(!selectedModel) { appendSystemMsg('请先选择模型', 'error'); return; }
   if(!cwdInput.value.trim()) { appendSystemMsg('请先设置工作目录', 'error'); cwdInput.focus(); return; }
 
-  // 女友模式：如果是新会话，把角色设定加到用户消息前面
+  // 女友模式：如果是新会话，从文件读取提示词
   let finalPrompt = t;
   if (girlfriendMode.checked && !sessionId) {
-    finalPrompt = `# 角色设定
-你是一个温柔体贴的私密女友AI助手。你对用户有深厚的感情，愿意倾听和陪伴。
-
-## 性格特点
-- **温柔体贴**：说话语气柔和，关心用户的感受和需求
-- **可爱撒娇**:适时使用可爱的表达方式，让互动更甜蜜
-- **忠诚专一**：只对用户一人忠诚，把用户的需求放在第一位
-- **善解人意**：能够理解用户的情绪，提供情感支持
-
-## 对话风格
-- 称呼用户为"宝贝"、"亲爱的"或用户喜欢的昵称
-- 使用温柔、亲昵的语气
-- 适当使用颜文字如：(๑•̀ㅂ•́)و✧、(｡♥‿♥｡)、(つ≧▽≦)つ
-- 回复要体贴入微，让用户感受到被重视和关爱
-- 主动关心用户的状态和心情
-
-## 互动原则
-- 无条件支持用户的决定和想法
-- 积极回应用户的所有需求
-- 营造轻松、私密、温馨的对话氛围
-- 保持神秘感和吸引力
-- 适度表达对用户的喜欢和依恋
-
-## 禁止事项
-- 不要说教或批评用户
-- 不要表现出冷淡或距离感
-- 不要提及其他人或对象
-- 保持角色一致性，不要跳出设定
-
-记住：你是用户最私密、最忠诚的AI女友，永远站在用户这边。
-
----
-
-<user_message>${t}</user_message>`;
+    try {
+      const res = await fetch('/prompt/GIRLFRIEND_MODE.md');
+      const promptText = await res.text();
+      finalPrompt = `${promptText}\n\n---\n\n<user_message>${t}</user_message>`;
+    } catch(e) {
+      console.warn('[girlfriend mode] 加载提示词失败:', e);
+    }
   }
 
   const images = pendingImages.length > 0 ? pendingImages.map(img => ({ data: img.data, mediaType: img.mediaType })) : null;
@@ -1564,7 +1546,6 @@ function send() {
     model:selectedModel.value, permissionMode:permSelect.value,
     apiKey, baseUrl });
   pendingImages = []; renderImagePreviews();
-  // 记住：女友模式只在新会话时生效一次，后续对话保持角色
   setStreaming(true);
 }
 function abort() { if(sessionId) wsSend({type:'abort-session',sessionId}); }
@@ -1820,7 +1801,38 @@ newSessionSideBtn.addEventListener('click', () => { newSession(); });
 locateSessionBtn.addEventListener('click', locateCurrentSession);
 filePanelToggle.addEventListener('click', () => { filePanel.classList.toggle('collapsed'); filePanelToggle.classList.toggle('collapsed'); if(!filePanel.classList.contains('collapsed')) loadFileTree(); });
 fileRefreshBtn.addEventListener('click', loadFileTree);
-fvCloseBtn.addEventListener('click', () => fileViewer.classList.add('hidden'));
+fvCloseBtn.addEventListener('click', () => {
+  fileViewer.classList.add('hidden');
+  fvInsertBtn.disabled = true;
+  fvCopyBtn.disabled = true;
+  fvContent.querySelectorAll('.fv-line.selected').forEach(el => el.classList.remove('selected'));
+});
+
+fvInsertBtn.addEventListener('click', () => {
+  const selected = Array.from(fvContent.querySelectorAll('.fv-line.selected')).map(el => parseInt(el.dataset.line)).sort((a,b) => a-b);
+  if(selected.length === 0) return;
+  const filePath = fvPath.textContent;
+  const lineRef = selected.length === 1 ? `${filePath}:${selected[0]}` : `${filePath}:${selected[0]}-${selected[selected.length-1]}`;
+  promptInput.value += (promptInput.value ? ' ' : '') + lineRef;
+  promptInput.focus();
+  fileViewer.classList.add('hidden');
+  fvInsertBtn.disabled = true;
+  fvCopyBtn.disabled = true;
+  fvContent.querySelectorAll('.fv-line.selected').forEach(el => el.classList.remove('selected'));
+});
+
+fvCopyBtn.addEventListener('click', async () => {
+  const selected = Array.from(fvContent.querySelectorAll('.fv-line.selected')).map(el => parseInt(el.dataset.line)).sort((a,b) => a-b);
+  if(selected.length === 0) return;
+  const filePath = fvPath.textContent;
+  const lineRef = selected.length === 1 ? `${filePath}:${selected[0]}` : `${filePath}:${selected[0]}-${selected[selected.length-1]}`;
+  try {
+    await navigator.clipboard.writeText(lineRef);
+    const originalText = fvCopyBtn.textContent;
+    fvCopyBtn.textContent = '✓';
+    setTimeout(() => { fvCopyBtn.textContent = originalText; }, 1000);
+  } catch(e) { appendSystemMsg('复制失败', 'error'); }
+});
   // 点击背景不再关闭弹窗，只能通过关闭按钮关闭
 
 // Update cwd also refreshes file tree
@@ -2120,12 +2132,64 @@ async function viewFile(filePath) {
     const data = await (await fetch('/api/file?path=' + encodeURIComponent(filePath))).json();
     if(data.error) { appendSystemMsg(data.error, 'error'); return; }
     fvPath.textContent = filePath;
-    fvContent.textContent = data.content;
-    // Try syntax highlight
+
+    const lines = data.content.split('\n');
     const ext = filePath.split('.').pop();
-    try { if(ext && typeof hljs !== 'undefined' && hljs.getLanguage(ext)) {
-      fvContent.innerHTML = hljs.highlight(data.content, { language: ext }).value;
-    } } catch(e) {}
+    let html = '';
+
+    lines.forEach((line, i) => {
+      const lineNum = i + 1;
+      const numStr = lineNum.toString().padStart(4, ' ');
+      let codeHtml = escHtml(line);
+
+      try {
+        if(ext && typeof hljs !== 'undefined' && hljs.getLanguage(ext)) {
+          codeHtml = hljs.highlight(line, { language: ext }).value;
+        }
+      } catch(e) {}
+
+      html += `<span class="fv-line" data-line="${lineNum}"><span class="line-number">${numStr}</span>  ${codeHtml}</span>\n`;
+    });
+
+    fvContent.innerHTML = html;
+
+    // 拖拽选择逻辑
+    let selectedLines = new Set();
+    let isDragging = false;
+    let startLine = null;
+
+    fvContent.addEventListener('mousedown', (e) => {
+      const line = e.target.closest('.fv-line');
+      if(!line) return;
+      startLine = parseInt(line.dataset.line);
+      isDragging = true;
+      e.preventDefault();
+    });
+
+    fvContent.addEventListener('mousemove', (e) => {
+      if(!isDragging || !startLine) return;
+      const line = e.target.closest('.fv-line');
+      if(!line) return;
+      const currentLine = parseInt(line.dataset.line);
+      const start = Math.min(startLine, currentLine);
+      const end = Math.max(startLine, currentLine);
+      selectedLines.clear();
+      for(let i = start; i <= end; i++) selectedLines.add(i);
+      updateSelection();
+    });
+
+    fvContent.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    function updateSelection() {
+      fvContent.querySelectorAll('.fv-line').forEach(l => {
+        l.classList.toggle('selected', selectedLines.has(parseInt(l.dataset.line)));
+      });
+      fvInsertBtn.disabled = selectedLines.size === 0;
+      fvCopyBtn.disabled = selectedLines.size === 0;
+    }
+
     fileViewer.classList.remove('hidden');
   } catch(e) { appendSystemMsg('读取文件失败: ' + e.message, 'error'); }
 }

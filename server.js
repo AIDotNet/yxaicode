@@ -219,11 +219,9 @@ async function runQuery(prompt, options, ws) {
     sdkPrompt = prompt;
   }
 
-  // Request log: address, model, time, role
+  // Request log: address, model, time
   const reqLogTime = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
   console.log(`[AI Request] 地址: ${effectiveBaseUrl} | 模型: ${sdkOpts.model} | 时间: ${reqLogTime}`);
-
-  let reqRole = 'user'; // Default role
 
   const qi = sdkQuery({ prompt: sdkPrompt, options: sdkOpts });
 
@@ -234,13 +232,6 @@ async function runQuery(prompt, options, ws) {
 
   try {
     for await (const msg of qi) {
-      // Debug: log message types for streaming analysis
-      console.log('[SDK msg]', msg.type, msg.subtype || '', msg.role || '', Array.isArray(msg.content) ? `content[${msg.content.length}]` : '');
-      // Log request role when first message arrives
-      if (!reqRole && msg.role) {
-        reqRole = msg.role;
-        console.log(`[AI Request] 地址: ${effectiveBaseUrl} | 模型: ${sdkOpts.model} | 时间: ${reqLogTime} | 角色: ${reqRole}`);
-      }
       // Capture session id
       if (msg.session_id && !sessionId) {
         sessionId = msg.session_id;
@@ -732,6 +723,34 @@ app.get('/api/file', async (req, res) => {
     const content = await fs.readFile(fp, 'utf8');
     res.json({ path: fp, size: stat.size, content });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// API: git status
+app.get('/api/git/status', async (req, res) => {
+  const cwd = req.query.cwd || process.cwd();
+  exec('git status --porcelain && git diff --cached && git diff', { cwd, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ output: stdout });
+  });
+});
+
+// API: git commit
+app.post('/api/git/commit', async (req, res) => {
+  const { cwd, message } = req.body;
+  if (!message) return res.status(400).json({ error: 'message required' });
+  exec(`git add -A && git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: cwd || process.cwd() }, (err, stdout, stderr) => {
+    if (err) return res.status(500).json({ error: stderr || err.message });
+    res.json({ output: stdout });
+  });
+});
+
+// API: git push
+app.post('/api/git/push', async (req, res) => {
+  const { cwd } = req.body;
+  exec('git push', { cwd: cwd || process.cwd() }, (err, stdout, stderr) => {
+    if (err) return res.status(500).json({ error: stderr || err.message });
+    res.json({ output: stdout });
+  });
 });
 
 const server = http.createServer(app);

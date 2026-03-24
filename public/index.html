@@ -194,7 +194,11 @@
   <div class="file-viewer-panel">
     <div class="file-viewer-header">
       <span class="fv-path" id="fvPath"></span>
-      <button id="fvCloseBtn" class="btn-icon" title="关闭">✕</button>
+      <div>
+        <button id="fvInsertBtn" class="btn-primary" title="插入选中行号到输入框" disabled>插入选中行号</button>
+        <button id="fvCopyBtn" class="btn-icon" title="复制选中行号" disabled>📋</button>
+        <button id="fvCloseBtn" class="btn-icon" title="关闭">✕</button>
+      </div>
     </div>
     <div class="file-viewer-content"><pre id="fvContent"></pre></div>
   </div>
