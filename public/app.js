@@ -643,9 +643,11 @@ const TOOL_ICON = {
   } catch(e) { console.error('[version]', e); }
 
   try {
-    const savedBaseUrl = localStorage.getItem('yxcode_baseUrl') || '';
-    const modelsUrl = savedBaseUrl ? `/api/models?baseUrl=${encodeURIComponent(savedBaseUrl)}` : '/api/models';
-    const models = await (await fetch(modelsUrl)).json();
+    // 始终从 yxai.chat 加载模型列表，切换自定义 URL 时不隐藏
+    let models = [];
+    try {
+      models = await (await fetch('/api/models')).json();
+    } catch(e) { console.error('[loadModels from yxai.chat]', e); }
     modelsData = models;
 
     // Render main model dropdown (includes custom models)
@@ -708,7 +710,7 @@ const TOOL_ICON = {
   });
   settingsBtn.addEventListener('click', () => { settingsOverlay.classList.remove('hidden'); renderPermissionList(); });
   settingsCloseBtn.addEventListener('click', () => settingsOverlay.classList.add('hidden'));
-  settingsOverlay.addEventListener('click', e => { if(e.target===settingsOverlay) settingsOverlay.classList.add('hidden'); });
+  // 点击背景不再关闭弹窗，只能通过关闭按钮关闭
   settingsSaveBtn.addEventListener('click', saveSettings);
   clearPermissionsBtn.addEventListener('click', clearRememberedPermissions);
 
@@ -725,15 +727,22 @@ const TOOL_ICON = {
 
   // Test Base URL connection
   testBaseUrlBtn.addEventListener('click', async () => {
-    const baseUrl = setBaseUrl.value.trim() || 'https://yxai.chat';
+    const baseUrl = setBaseUrl.value.trim();
+    const apiKey = setApiKey.value.trim();
+    const model = selectedSettingsModel?.value || selectedModel?.value || 'sonnet';
+
     testResult.className = 'test-result loading';
     testResult.textContent = '正在测试连接...';
     try {
-      const res = await fetch(`/api/test-connection?baseUrl=${encodeURIComponent(baseUrl)}`);
+      const res = await fetch('/api/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseUrl, apiKey, model })
+      });
       const data = await res.json();
       if (data.success) {
         testResult.className = 'test-result success';
-        testResult.textContent = `✓ 连接成功${data.message ? '：' + data.message : ''}`;
+        testResult.textContent = `✓ ${data.message}`;
       } else {
         testResult.className = 'test-result error';
         testResult.textContent = `✗ 连接失败：${data.message || '未知错误'}`;
@@ -772,6 +781,18 @@ function saveSettings() {
       opt.addEventListener('click', () => selectModel(m));
       modelSelectDropdown.appendChild(opt);
     });
+  }
+  // 同步设置到 ~/.claude/settings.json
+  const syncPayload = {};
+  if (setApiKey.value.trim()) syncPayload.apiKey = setApiKey.value.trim();
+  syncPayload.baseUrl = setBaseUrl.value.trim() || 'https://yxai.chat';
+  if (selectedSettingsModel) syncPayload.model = selectedSettingsModel.value;
+  if (Object.keys(syncPayload).length > 0) {
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(syncPayload),
+    }).catch(err => console.warn('[settings sync]', err));
   }
   settingsSaved.classList.add('show');
   setTimeout(() => settingsSaved.classList.remove('show'), 2000);
@@ -1755,7 +1776,7 @@ locateSessionBtn.addEventListener('click', locateCurrentSession);
 filePanelToggle.addEventListener('click', () => { filePanel.classList.toggle('collapsed'); filePanelToggle.classList.toggle('collapsed'); if(!filePanel.classList.contains('collapsed')) loadFileTree(); });
 fileRefreshBtn.addEventListener('click', loadFileTree);
 fvCloseBtn.addEventListener('click', () => fileViewer.classList.add('hidden'));
-fileViewer.addEventListener('click', e => { if(e.target===fileViewer) fileViewer.classList.add('hidden'); });
+  // 点击背景不再关闭弹窗，只能通过关闭按钮关闭
 
 // Update cwd also refreshes file tree
 cwdInput.addEventListener('change', () => {
@@ -2073,7 +2094,7 @@ cwdOpenBtn.addEventListener('click', () => {
 });
 fbCloseBtn.addEventListener('click', closeFolderBrowser);
 fbCancelBtn.addEventListener('click', closeFolderBrowser);
-folderBrowser.addEventListener('click', e => { if(e.target === folderBrowser) closeFolderBrowser(); });
+  // 点击背景不再关闭弹窗，只能通过关闭按钮关闭
 fbSelectBtn.addEventListener('click', () => {
   if(fbCurrentPath) {
     cwdInput.value = fbCurrentPath;

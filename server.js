@@ -9,7 +9,7 @@
 import express from 'express';
 import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 import crypto from 'crypto';
 import path from 'path';
 import os from 'os';
@@ -113,7 +113,7 @@ async function runQuery(prompt, options, ws) {
   let sessionId = options.sessionId || null;
 
   // Use custom base URL if provided, otherwise use default
-  const effectiveBaseUrl = options.baseUrl || API_BASE_URL;
+  const effectiveBaseUrl = (options.baseUrl && options.baseUrl.trim()) || API_BASE_URL;
   const prevBaseUrl = process.env.ANTHROPIC_BASE_URL;
   const prevApiKey = process.env.ANTHROPIC_API_KEY;
 
@@ -192,7 +192,7 @@ async function runQuery(prompt, options, ws) {
     sdkPrompt = prompt;
   }
 
-  const qi = query({ prompt: sdkPrompt, options: sdkOpts });
+  const qi = sdkQuery({ prompt: sdkPrompt, options: sdkOpts });
 
   if (prev !== undefined) process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT = prev;
   else delete process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT;
@@ -252,6 +252,38 @@ async function loadMcpConfig(cwd) {
     }
     return Object.keys(servers).length ? servers : null;
   } catch { return null; }
+}
+
+// --- Sync settings to ~/.claude/settings.json ---
+async function syncSettingsFile(apiKey, baseUrl, model) {
+  const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+  try {
+    let settings = {};
+    try {
+      const raw = await fs.readFile(settingsPath, 'utf-8');
+      settings = JSON.parse(raw);
+    } catch { /* 文件不存在或 JSON 无效，使用空对象 */ }
+
+    if (!settings.env) settings.env = {};
+
+    if (apiKey) {
+      settings.env.ANTHROPIC_AUTH_TOKEN = apiKey;
+      settings.env.ANTHROPIC_API_KEY = apiKey;
+    }
+    settings.env.ANTHROPIC_BASE_URL = baseUrl || API_BASE_URL;
+    if (model) {
+      settings.env.ANTHROPIC_MODEL = model;
+      settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = model;
+      settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL = model;
+      settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL = model;
+    }
+
+    await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+    console.log(`[settings] 已同步设置到 ${settingsPath}`);
+  } catch (e) {
+    console.warn(`[settings sync] ${e.message}`);
+  }
 }
 
 // --- Parse session info (Fix 4: scan full file for meaningful title) ---
@@ -314,39 +346,86 @@ app.get('/api/version', (_req, res) => {
   res.json({ version: pkgJson.version });
 });
 
-// API: test connection to a base URL
-app.get('/api/test-connection', async (req, res) => {
-  const baseUrl = (req.query.baseUrl || API_BASE_URL).replace(/\/+$/, '');
+// API: test connection using Claude Agent SDK
+app.post('/api/test-connection', async (req, res) => {
+  const { baseUrl, apiKey, model } = req.body;
+  const effectiveBaseUrl = (baseUrl && baseUrl.trim()) || API_BASE_URL;
+  const effectiveModel = model || 'sonnet';
+
+  console.log(`[test-connection] 测试配置:`);
+  console.log(`  baseUrl: ${effectiveBaseUrl}`);
+  console.log(`  apiKey: ${apiKey ? '***' + apiKey.slice(-6) : '(未设置)'}`);
+  console.log(`  model: ${effectiveModel}`);
+
+  const prevBaseUrl = process.env.ANTHROPIC_BASE_URL;
+  const prevApiKey = process.env.ANTHROPIC_API_KEY;
+
+  const timeout = setTimeout(() => {
+    if (!responded) {
+      responded = true;
+      console.log(`[test-connection] 超时`);
+      res.json({ success: false, message: '测试超时（30秒）' });
+    }
+  }, 30000);
+
+  let responded = false;
+
   try {
-    const https = await import('https');
-    const http = await import('http');
-    const urlObj = new URL(`${baseUrl}/prod-api/model?ModelApiTypes=1&SkipCount=1&MaxResultCount=1`);
-    const client = urlObj.protocol === 'https:' ? https : http;
-    const request = client.get(urlObj.href, { timeout: 10000 }, (apiRes) => {
-      let data = '';
-      apiRes.on('data', chunk => data += chunk);
-      apiRes.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          if (json.items && Array.isArray(json.items)) {
-            res.json({ success: true, message: `已连接，发现 ${json.items.length} 个模型` });
-          } else {
-            res.json({ success: false, message: '响应格式不正确' });
-          }
-        } catch (e) {
-          res.json({ success: false, message: '响应解析失败：' + e.message });
+    process.env.ANTHROPIC_BASE_URL = effectiveBaseUrl;
+    if (apiKey) process.env.ANTHROPIC_API_KEY = apiKey;
+
+    const testPrompt = 'hi';
+    const sdkOpts = {
+      model: effectiveModel,
+      cwd: process.cwd(),
+      tools: { type: 'preset', preset: 'claude_code' },
+      system: { type: 'preset', preset: 'claude_code' },
+      permissionMode: 'bypassPermissions',
+    };
+
+    console.log(`[test-connection] 发送测试请求: "${testPrompt}"`);
+    const qi = sdkQuery({ prompt: testPrompt, options: sdkOpts });
+
+    for await (const msg of qi) {
+      if (msg.type === 'assistant' || msg.type === 'result') {
+        if (!responded) {
+          responded = true;
+          clearTimeout(timeout);
+          console.log(`[test-connection] 收到响应: type=${msg.type}`);
+          res.json({ success: true, message: '连接成功，模型响应正常' });
         }
-      });
-    });
-    request.on('error', (e) => {
-      res.json({ success: false, message: '连接失败：' + e.message });
-    });
-    request.on('timeout', () => {
-      request.destroy();
-      res.json({ success: false, message: '连接超时' });
-    });
+        break;
+      }
+    }
+
+    if (!responded) {
+      responded = true;
+      clearTimeout(timeout);
+      res.json({ success: false, message: '未收到模型响应' });
+    }
   } catch (e) {
-    res.json({ success: false, message: e.message });
+    if (!responded) {
+      responded = true;
+      clearTimeout(timeout);
+      console.log(`[test-connection] 错误: ${e.message}`);
+      res.json({ success: false, message: e.message });
+    }
+  } finally {
+    if (prevBaseUrl !== undefined) process.env.ANTHROPIC_BASE_URL = prevBaseUrl;
+    else delete process.env.ANTHROPIC_BASE_URL;
+    if (prevApiKey !== undefined) process.env.ANTHROPIC_API_KEY = prevApiKey;
+    else delete process.env.ANTHROPIC_API_KEY;
+  }
+});
+
+// API: sync settings to ~/.claude/settings.json
+app.post('/api/settings', async (req, res) => {
+  const { apiKey, baseUrl, model } = req.body;
+  try {
+    await syncSettingsFile(apiKey, baseUrl, model);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
   }
 });
 
@@ -629,6 +708,7 @@ wss.on('connection', (ws) => {
 
     switch (msg.type) {
       case 'claude-command': {
+        console.log(`[WS] claude-command 收到: baseUrl="${msg.baseUrl}", apiKey=${msg.apiKey ? '***' + msg.apiKey.slice(-6) : '(空)'}, model="${msg.model}"`);
         const hasClaudeCli = await checkClaudeInstalled();
         if (!hasClaudeCli) {
           wsSend(ws, {
@@ -638,6 +718,8 @@ wss.on('connection', (ws) => {
           });
           break;
         }
+        // 每次查询前同步设置到 ~/.claude/settings.json
+        await syncSettingsFile(msg.apiKey, msg.baseUrl, msg.model);
         runQuery(msg.prompt, {
           sessionId: msg.sessionId || null,
           cwd: msg.cwd || null,
