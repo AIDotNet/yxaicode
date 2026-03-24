@@ -15,7 +15,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen" alt="Node.js Version">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
-  <img src="https://img.shields.io/badge/code%20lines-%3C4000-orange" alt="Code Lines">
 </p>
 
 </div>
@@ -40,7 +39,7 @@ A visual interaction interface based on **Node.js + WebSocket + HTML/CSS/JS**, a
 
 ### 🎯 Minimalist Architecture
 - Node.js + WebSocket + HTML/CSS/JS
-- Less than 4,000 lines of code
+- No build tools, no frontend frameworks
 - Only depends on Node.js
 
 </td>
@@ -122,7 +121,7 @@ PORT=8080 yxai
 | Requirement | Version |
 |-------------|---------|
 | Node.js     | >= 22.0.0 |
-| Claude Code | Installed (no configuration needed) |
+| Claude Code | Prerequisite (no configuration needed) |
 
 ---
 

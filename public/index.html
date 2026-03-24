@@ -23,6 +23,7 @@
 </script>
 <script src="/vendor/marked.min.js"></script>
 <script src="/vendor/highlight.min.js"></script>
+<script src="/vendor/diff-match-patch.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -47,7 +48,7 @@
   <header id="header">
     <div class="header-left">
       <button id="sidebarToggle" class="btn-icon" title="会话列表">☰</button>
-      <span class="logo">意心Code</span><span class="version" id="appVersion">v-</span>
+      <a href="https://yxai.chat" target="_blank" rel="noopener noreferrer" class="logo" title="访问意心AI官网">意心Code</a><span class="version" id="appVersion">v-</span>
     </div>
     <div class="header-center">
       <div class="model-select-wrapper">
@@ -73,6 +74,12 @@
       </label>
     </div>
     <div class="header-right">
+      <button id="fullscreenBtn" class="btn-icon btn-fullscreen" title="全屏" aria-label="全屏">
+        <!-- Expand icon: shown when not fullscreen -->
+        <svg id="fullscreenIconExpand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+        <!-- Compress icon: shown when fullscreen -->
+        <svg id="fullscreenIconCompress" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></svg>
+      </button>
       <button id="themeToggleBtn" class="btn-icon btn-theme" title="切换主题" aria-label="切换主题">
         <!-- Sun icon: shown in dark mode -->
         <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
@@ -92,6 +99,7 @@
       <input id="cwdInput" type="text" placeholder="项目路径..." />
       <div id="cwdDropdown" class="cwd-dropdown"></div>
     </div>
+    <button id="cwdOpenBtn" class="btn-browse" title="打开目录">📁 打开</button>
     <button id="cwdBrowseBtn" class="btn-browse" title="浏览文件夹">📂 浏览</button>
     <button id="filePanelToggle" class="btn-icon file-toggle" title="文件浏览"><span class="toggle-arrow">▶</span></button>
   </div>
@@ -99,21 +107,40 @@
   <div id="settingsOverlay" class="settings-overlay hidden">
     <div class="settings-panel">
       <h2>⚙ 设置</h2>
-      <div class="sg"><label>API Key</label><input id="setApiKey" type="password" placeholder="yi-xxxxx..." /><div class="hint">请输入意心AI的API Key（yi-开头）</div></div>
+      <div class="sg"><label>API Key</label><div class="apikey-input-row"><input id="setApiKey" type="password" placeholder="yi-xxxxx..." /><button id="copyApiKeyBtn" class="btn-icon" title="复制 API Key">📋</button></div><div class="hint">请输入API Key（意心AI ApiKey yi- 开头）</div></div>
       <div class="sg">
         <label>模型</label>
-        <div class="model-select-wrapper" style="width:100%;">
-          <div id="setModelDisplay" class="model-select-display" style="min-width:100%;">
-            <img class="model-icon" src="" alt="" style="display:none;">
-            <span class="model-label">选择模型</span>
-            <span class="model-arrow">▼</span>
+        <div class="model-search-wrapper" style="width:100%;">
+          <div class="model-search-input-row">
+            <input id="setModelSearch" type="text" placeholder="搜索或输入自定义模型ID，回车添加..." autocomplete="off" />
           </div>
-          <div id="setModelDropdown" class="model-select-dropdown"></div>
+          <div id="setModelDropdown" class="model-select-dropdown model-search-dropdown"></div>
+        </div>
+      </div>
+      <!-- 高级设置（折叠） -->
+      <div class="sg advanced-settings-group">
+        <div class="advanced-toggle" id="advancedToggle">
+          <span class="advanced-arrow">▶</span>
+          <label>高级设置</label>
+        </div>
+        <div class="advanced-content hidden" id="advancedContent">
+          <div class="sg">
+            <label>Base URL</label>
+            <div class="base-url-row">
+              <input id="setBaseUrl" type="text" placeholder="https://yxai.chat" />
+              <button id="testBaseUrlBtn" class="btn-secondary btn-test">测试</button>
+            </div>
+            <div class="hint">API 服务地址，留空则使用默认地址 https://yxai.chat</div>
+            <div id="testResult" class="test-result"></div>
+          </div>
         </div>
       </div>
       <div class="sg">
         <label>权限管理</label>
-        <button id="clearPermissionsBtn" class="btn-secondary" style="width:100%;">清除已记住的权限</button>
+        <div id="permissionList" class="permission-list"></div>
+        <div class="permission-actions">
+          <button id="clearPermissionsBtn" class="btn-secondary" style="width:100%;">清除所有权限</button>
+        </div>
         <div class="hint" id="permissionCount">已记住 0 条权限规则</div>
       </div>
       <div class="settings-footer"><span id="settingsSaved" class="settings-saved">已保存</span><button id="settingsSaveBtn" class="btn-primary">保存</button><button id="settingsCloseBtn" class="btn-settings">关闭</button></div>
@@ -122,8 +149,10 @@
   <main id="chatArea"><div id="messages"></div><div id="permBanner" class="hidden"></div></main>
   <footer id="inputArea">
     <div id="cmdDropdown" class="cmd-dropdown"></div>
+    <div id="inputResizeHandle" class="input-resize-handle"></div>
+    <div id="imagePreviewBar" class="image-preview-bar" style="display:none;"></div>
     <div class="input-row">
-      <textarea id="promptInput" rows="3" placeholder="输入消息... (Enter 发送, Shift+Enter 换行, / 命令, @ 文件)"></textarea>
+      <textarea id="promptInput" rows="3" placeholder="输入消息... (Enter 发送, Shift+Enter 换行, / 命令, @ 文件, 可粘贴图片)"></textarea>
       <div class="btn-col">
         <button id="sendBtn" class="btn-primary">发送</button>
         <button id="abortBtn" class="btn-danger hidden">停止</button>
@@ -137,9 +166,10 @@
   <!-- File Panel -->
   <aside id="filePanel">
     <div class="filepanel-header">
-      <span>文件浏览</span>
+      <span>工作目录浏览</span>
       <button id="fileRefreshBtn" class="btn-icon" title="刷新">🔄</button>
     </div>
+    <div class="filepanel-hint">💡 支持拖动文件到对话输入框</div>
     <div class="filepanel-body" id="fileTreeBody"></div>
   </aside>
 </div>

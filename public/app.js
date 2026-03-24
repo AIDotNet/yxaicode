@@ -13,7 +13,8 @@ marked.setOptions({
 
 const $ = s => document.querySelector(s);
 const modelSelectDisplay=$('#modelSelectDisplay'), modelSelectDropdown=$('#modelSelectDropdown'),
-  setModelDisplay=$('#setModelDisplay'), setModelDropdown=$('#setModelDropdown'),
+  setModelSearch=$('#setModelSearch'), setModelDropdown=$('#setModelDropdown'),
+  advancedToggle=$('#advancedToggle'), advancedContent=$('#advancedContent'),
   permSelect=$('#permSelect'), girlfriendMode=$('#girlfriendMode'), cwdInput=$('#cwdInput'),
   cwdDropdown=$('#cwdDropdown'),
   connStatus=$('#connStatus'), messagesEl=$('#messages'), permBanner=$('#permBanner'),
@@ -21,6 +22,7 @@ const modelSelectDisplay=$('#modelSelectDisplay'), modelSelectDropdown=$('#model
   newBtn=$('#newBtn'), sessionInfo=$('#sessionInfo'),
   settingsBtn=$('#settingsBtn'), settingsOverlay=$('#settingsOverlay'),
   setApiKey=$('#setApiKey'),
+  setBaseUrl=$('#setBaseUrl'), testBaseUrlBtn=$('#testBaseUrlBtn'), testResult=$('#testResult'),
   settingsSaveBtn=$('#settingsSaveBtn'),
   settingsCloseBtn=$('#settingsCloseBtn'), settingsSaved=$('#settingsSaved'),
   clearPermissionsBtn=$('#clearPermissionsBtn'), permissionCount=$('#permissionCount'),
@@ -33,6 +35,7 @@ const modelSelectDisplay=$('#modelSelectDisplay'), modelSelectDropdown=$('#model
   fileRefreshBtn=$('#fileRefreshBtn'),
   fileViewer=$('#fileViewer'), fvPath=$('#fvPath'), fvContent=$('#fvContent'), fvCloseBtn=$('#fvCloseBtn'),
   cwdBrowseBtn=$('#cwdBrowseBtn'),
+  cwdOpenBtn=$('#cwdOpenBtn'),
   folderBrowser=$('#folderBrowser'), fbPath=$('#fbPath'), fbBody=$('#fbBody'),
   fbSelectBtn=$('#fbSelectBtn'), fbCancelBtn=$('#fbCancelBtn'), fbCloseBtn=$('#fbCloseBtn'),
   sidebarSearch=$('#sidebarSearch'),
@@ -72,13 +75,45 @@ themeToggleBtn.addEventListener('click', () => {
   }
 })();
 
+// --- Fullscreen Toggle ---
+const fullscreenBtn = document.getElementById('fullscreenBtn');
+const fullscreenIconExpand = document.getElementById('fullscreenIconExpand');
+const fullscreenIconCompress = document.getElementById('fullscreenIconCompress');
+
+function applyFullscreenIcon(isFs) {
+  if (isFs) {
+    fullscreenIconExpand.style.display = 'none';
+    fullscreenIconCompress.style.display = '';
+  } else {
+    fullscreenIconExpand.style.display = '';
+    fullscreenIconCompress.style.display = 'none';
+  }
+}
+
+fullscreenBtn.addEventListener('click', () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen().catch(() => {});
+  }
+});
+
+document.addEventListener('fullscreenchange', () => {
+  applyFullscreenIcon(!!document.fullscreenElement);
+});
+
 let ws=null, sessionId=null, isStreaming=false, streamingEl=null, streamBuf='', flushTimer=null;
 let expandedProjects = new Set(); // Fix 6: track expanded sidebar projects
 let selectedModel = null; // Current selected model object
 let selectedSettingsModel = null; // Settings model selection
 let modelsData = []; // All available models
+let customModels = []; // User-added custom models
 let rememberedPermissions = new Set(); // Remembered permission rules
 let cwdHistory = []; // Working directory history (max 10)
+// 图片粘贴相关
+let pendingImages = []; // 待发送的图片 [{data, mediaType, name}]
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
 // ========== CWD History Management ==========
 function loadCwdHistory() {
@@ -256,8 +291,9 @@ This file provides guidance to Claude Code when working with code in this reposi
 
   appendUserMsg('/init');
   promptInput.value = '';
+  const baseUrl = localStorage.getItem('yxcode_baseUrl') || '';
   wsSend({ type: 'claude-command', prompt: initPrompt, sessionId, cwd: cwdInput.value || null,
-    model: selectedModel.value, permissionMode: permSelect.value, apiKey });
+    model: selectedModel.value, permissionMode: permSelect.value, apiKey, baseUrl });
   setStreaming(true);
 }
 
@@ -444,16 +480,90 @@ function selectModel(model) {
 
 function selectSettingsModel(model) {
   selectedSettingsModel = model;
-  const icon = setModelDisplay.querySelector('.model-icon');
-  const label = setModelDisplay.querySelector('.model-label');
-  if (model.icon) {
-    icon.src = model.icon;
-    icon.style.display = 'block';
-  } else {
-    icon.style.display = 'none';
-  }
-  label.textContent = model.label;
+  setModelSearch.value = model.label;
+  setModelSearch._selectedLabel = model.label; // 记住选中时的文本
   setModelDropdown.classList.remove('visible');
+}
+
+// 加载自定义模型
+function loadCustomModels() {
+  try {
+    const saved = localStorage.getItem('yxcode_customModels');
+    if (saved) customModels = JSON.parse(saved);
+  } catch(e) { customModels = []; }
+}
+
+function saveCustomModels() {
+  localStorage.setItem('yxcode_customModels', JSON.stringify(customModels));
+}
+
+function addCustomModel(modelId) {
+  modelId = modelId.trim();
+  if (!modelId) return null;
+  // 检查是否已存在于意心AI模型或自定义模型中
+  const allModels = getAllModels();
+  const existing = allModels.find(m => m.value === modelId);
+  if (existing) return existing;
+  const newModel = { value: modelId, label: modelId, description: '', icon: '', provider: '自定义', isCustom: true };
+  customModels.push(newModel);
+  saveCustomModels();
+  return newModel;
+}
+
+function removeCustomModel(modelId) {
+  customModels = customModels.filter(m => m.value !== modelId);
+  saveCustomModels();
+  renderSettingsModelDropdown();
+}
+
+function getAllModels() {
+  return [...modelsData.map(m => ({...m, isCustom: false})), ...customModels];
+}
+
+function renderSettingsModelDropdown(filter = '') {
+  setModelDropdown.innerHTML = '';
+  const allModels = getAllModels();
+  const lowerFilter = filter.toLowerCase();
+  const filtered = lowerFilter ? allModels.filter(m =>
+    m.value.toLowerCase().includes(lowerFilter) ||
+    m.label.toLowerCase().includes(lowerFilter) ||
+    (m.provider && m.provider.toLowerCase().includes(lowerFilter))
+  ) : allModels;
+
+  if (filtered.length === 0 && filter) {
+    const hint = document.createElement('div');
+    hint.className = 'model-search-hint';
+    hint.textContent = `按回车添加自定义模型「${filter}」`;
+    setModelDropdown.appendChild(hint);
+  }
+
+  filtered.forEach(m => {
+    const opt = document.createElement('div');
+    opt.className = 'model-select-option';
+    opt.dataset.value = m.value;
+    const iconHTML = m.icon ? `<img class="model-icon" src="${m.icon}" alt="">` : '<div class="model-icon-placeholder"></div>';
+    const badge = m.isCustom
+      ? '<span class="model-badge model-badge-custom">自定义</span>'
+      : '<span class="model-badge model-badge-yxai">意心AI</span>';
+    const deleteBtn = m.isCustom
+      ? '<button class="model-delete-btn" title="删除自定义模型">✕</button>'
+      : '';
+    opt.innerHTML = `${iconHTML}<span class="model-label">${escHtml(m.label)}</span>${badge}${m.provider && !m.isCustom ? `<span class="model-provider">${escHtml(m.provider)}</span>` : ''}${deleteBtn}`;
+    opt.addEventListener('click', (e) => {
+      if (e.target.classList.contains('model-delete-btn')) {
+        e.stopPropagation();
+        removeCustomModel(m.value);
+        // 如果删除的是当前选中的模型，清空选择
+        if (selectedSettingsModel && selectedSettingsModel.value === m.value) {
+          selectedSettingsModel = null;
+          setModelSearch.value = '';
+        }
+        return;
+      }
+      selectSettingsModel(m);
+    });
+    setModelDropdown.appendChild(opt);
+  });
 }
 
 modelSelectDisplay.addEventListener('click', (e) => {
@@ -461,16 +571,53 @@ modelSelectDisplay.addEventListener('click', (e) => {
   modelSelectDropdown.classList.toggle('visible');
 });
 
-setModelDisplay.addEventListener('click', (e) => {
-  e.stopPropagation();
-  setModelDropdown.classList.toggle('visible');
+// 设置页面模型搜索输入框事件
+setModelSearch.addEventListener('focus', () => {
+  // focus 时始终显示全部列表（用户还没输入新内容）
+  renderSettingsModelDropdown('');
+  setModelDropdown.classList.add('visible');
+});
+
+setModelSearch.addEventListener('input', () => {
+  const val = setModelSearch.value;
+  // 如果内容和选中时一致，说明用户没有修改，显示全部
+  const filter = (val === setModelSearch._selectedLabel) ? '' : val;
+  renderSettingsModelDropdown(filter);
+  setModelDropdown.classList.add('visible');
+});
+
+setModelSearch.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const val = setModelSearch.value.trim();
+    if (!val) return;
+    // 先在已有模型中查找
+    const allModels = getAllModels();
+    let found = allModels.find(m => m.value === val || m.label === val);
+    if (!found) {
+      // 添加为自定义模型
+      found = addCustomModel(val);
+    }
+    if (found) {
+      selectSettingsModel(found);
+      renderSettingsModelDropdown();
+    }
+  }
+});
+
+// 高级设置折叠
+advancedToggle.addEventListener('click', () => {
+  const isHidden = advancedContent.classList.contains('hidden');
+  advancedContent.classList.toggle('hidden');
+  advancedToggle.querySelector('.advanced-arrow').textContent = isHidden ? '▼' : '▶';
 });
 
 document.addEventListener('click', (e) => {
   if (!modelSelectDisplay.contains(e.target) && !modelSelectDropdown.contains(e.target)) {
     modelSelectDropdown.classList.remove('visible');
   }
-  if (!setModelDisplay.contains(e.target) && !setModelDropdown.contains(e.target)) {
+  const searchWrapper = setModelSearch.closest('.model-search-wrapper');
+  if (searchWrapper && !searchWrapper.contains(e.target)) {
     setModelDropdown.classList.remove('visible');
   }
 });
@@ -496,32 +643,27 @@ const TOOL_ICON = {
   } catch(e) { console.error('[version]', e); }
 
   try {
-    const models = await (await fetch('/api/models')).json();
+    const savedBaseUrl = localStorage.getItem('yxcode_baseUrl') || '';
+    const modelsUrl = savedBaseUrl ? `/api/models?baseUrl=${encodeURIComponent(savedBaseUrl)}` : '/api/models';
+    const models = await (await fetch(modelsUrl)).json();
     modelsData = models;
 
-    // Render main model dropdown
+    // Render main model dropdown (includes custom models)
+    loadCustomModels();
     modelSelectDropdown.innerHTML = '';
-    models.forEach(m => {
+    const allMainModels = [...models.map(m => ({...m, isCustom: false})), ...customModels];
+    allMainModels.forEach(m => {
       const opt = document.createElement('div');
       opt.className = 'model-select-option';
       opt.dataset.value = m.value;
-      const iconHTML = m.icon ? `<img class="model-icon" src="${m.icon}" alt="">` : '<div class="model-icon" style="background:var(--bg3)"></div>';
+      const iconHTML = m.icon ? `<img class="model-icon" src="${m.icon}" alt="">` : '<div class="model-icon-placeholder"></div>';
       opt.innerHTML = `${iconHTML}<span class="model-label">${escHtml(m.label)}</span>${m.provider ? `<span class="model-provider">${escHtml(m.provider)}</span>` : ''}`;
       opt.addEventListener('click', () => selectModel(m));
       modelSelectDropdown.appendChild(opt);
     });
 
-    // Render settings model dropdown
-    setModelDropdown.innerHTML = '';
-    models.forEach(m => {
-      const opt = document.createElement('div');
-      opt.className = 'model-select-option';
-      opt.dataset.value = m.value;
-      const iconHTML = m.icon ? `<img class="model-icon" src="${m.icon}" alt="">` : '<div class="model-icon" style="background:var(--bg3)"></div>';
-      opt.innerHTML = `${iconHTML}<span class="model-label">${escHtml(m.label)}</span>${m.provider ? `<span class="model-provider">${escHtml(m.provider)}</span>` : ''}`;
-      opt.addEventListener('click', () => selectSettingsModel(m));
-      setModelDropdown.appendChild(opt);
-    });
+    // Render settings model dropdown with search
+    renderSettingsModelDropdown();
 
     // Store models data for header display
     window._yxModels = models;
@@ -529,7 +671,8 @@ const TOOL_ICON = {
     // Restore saved model
     const savedModelId = localStorage.getItem('yxcode_model');
     if (savedModelId) {
-      const savedModel = models.find(m => m.value === savedModelId);
+      const allModels = getAllModels();
+      const savedModel = allModels.find(m => m.value === savedModelId);
       if (savedModel) {
         selectModel(savedModel);
         selectSettingsModel(savedModel);
@@ -541,6 +684,7 @@ const TOOL_ICON = {
   } catch(e) { console.error('[loadModels]', e); }
   cwdInput.value = localStorage.getItem('yxcode_cwd') || '';
   setApiKey.value = localStorage.getItem('yxcode_apiKey') || '';
+  setBaseUrl.value = localStorage.getItem('yxcode_baseUrl') || '';
   girlfriendMode.checked = localStorage.getItem('yxcode_girlfriendMode') === 'true';
 
   // Load remembered permissions
@@ -562,11 +706,43 @@ const TOOL_ICON = {
   girlfriendMode.addEventListener('change', () => {
     localStorage.setItem('yxcode_girlfriendMode', girlfriendMode.checked);
   });
-  settingsBtn.addEventListener('click', () => settingsOverlay.classList.remove('hidden'));
+  settingsBtn.addEventListener('click', () => { settingsOverlay.classList.remove('hidden'); renderPermissionList(); });
   settingsCloseBtn.addEventListener('click', () => settingsOverlay.classList.add('hidden'));
   settingsOverlay.addEventListener('click', e => { if(e.target===settingsOverlay) settingsOverlay.classList.add('hidden'); });
   settingsSaveBtn.addEventListener('click', saveSettings);
   clearPermissionsBtn.addEventListener('click', clearRememberedPermissions);
+
+  // Copy API Key button
+  document.getElementById('copyApiKeyBtn').addEventListener('click', () => {
+    const key = setApiKey.value;
+    if (!key) return;
+    navigator.clipboard.writeText(key).then(() => {
+      const btn = document.getElementById('copyApiKeyBtn');
+      btn.textContent = '✅';
+      setTimeout(() => { btn.textContent = '📋'; }, 1500);
+    });
+  });
+
+  // Test Base URL connection
+  testBaseUrlBtn.addEventListener('click', async () => {
+    const baseUrl = setBaseUrl.value.trim() || 'https://yxai.chat';
+    testResult.className = 'test-result loading';
+    testResult.textContent = '正在测试连接...';
+    try {
+      const res = await fetch(`/api/test-connection?baseUrl=${encodeURIComponent(baseUrl)}`);
+      const data = await res.json();
+      if (data.success) {
+        testResult.className = 'test-result success';
+        testResult.textContent = `✓ 连接成功${data.message ? '：' + data.message : ''}`;
+      } else {
+        testResult.className = 'test-result error';
+        testResult.textContent = `✗ 连接失败：${data.message || '未知错误'}`;
+      }
+    } catch (e) {
+      testResult.className = 'test-result error';
+      testResult.textContent = `✗ 连接失败：${e.message}`;
+    }
+  });
 
   // Update permission count when opening settings
   settingsBtn.addEventListener('click', updatePermissionCount);
@@ -579,10 +755,23 @@ const TOOL_ICON = {
 
 function saveSettings() {
   localStorage.setItem('yxcode_apiKey', setApiKey.value.trim());
+  localStorage.setItem('yxcode_baseUrl', setBaseUrl.value.trim());
   if (selectedSettingsModel) {
     localStorage.setItem('yxcode_model', selectedSettingsModel.value);
-    // Update main model select
+    // Update main model select and header dropdown (include custom models)
     selectModel(selectedSettingsModel);
+    // Re-render main model dropdown to include any new custom models
+    modelSelectDropdown.innerHTML = '';
+    const allMainModels = [...modelsData.map(m => ({...m, isCustom: false})), ...customModels];
+    allMainModels.forEach(m => {
+      const opt = document.createElement('div');
+      opt.className = 'model-select-option';
+      opt.dataset.value = m.value;
+      const iconHTML = m.icon ? `<img class="model-icon" src="${m.icon}" alt="">` : '<div class="model-icon-placeholder"></div>';
+      opt.innerHTML = `${iconHTML}<span class="model-label">${escHtml(m.label)}</span>${m.provider ? `<span class="model-provider">${escHtml(m.provider)}</span>` : ''}`;
+      opt.addEventListener('click', () => selectModel(m));
+      modelSelectDropdown.appendChild(opt);
+    });
   }
   settingsSaved.classList.add('show');
   setTimeout(() => settingsSaved.classList.remove('show'), 2000);
@@ -597,7 +786,45 @@ function clearRememberedPermissions() {
   rememberedPermissions.clear();
   localStorage.removeItem('yxcode_rememberedPermissions');
   updatePermissionCount();
+  renderPermissionList();
   appendSystemMsg(`已清除 ${count} 条权限规则`);
+}
+
+function removePermissionRule(rule) {
+  rememberedPermissions.delete(rule);
+  if (rememberedPermissions.size > 0) {
+    localStorage.setItem('yxcode_rememberedPermissions', JSON.stringify([...rememberedPermissions]));
+  } else {
+    localStorage.removeItem('yxcode_rememberedPermissions');
+  }
+  updatePermissionCount();
+  renderPermissionList();
+  appendSystemMsg(`已删除权限规则：${rule}`);
+}
+
+function renderPermissionList() {
+  const list = document.getElementById('permissionList');
+  if (!list) return;
+  if (rememberedPermissions.size === 0) {
+    list.innerHTML = '<div class="permission-empty">暂无已记住的权限规则</div>';
+    return;
+  }
+  list.innerHTML = '';
+  for (const rule of rememberedPermissions) {
+    const item = document.createElement('div');
+    item.className = 'permission-item';
+    const label = document.createElement('span');
+    label.className = 'permission-rule';
+    label.textContent = rule;
+    const delBtn = document.createElement('button');
+    delBtn.className = 'permission-delete-btn';
+    delBtn.title = '删除此权限';
+    delBtn.textContent = '✕';
+    delBtn.addEventListener('click', () => removePermissionRule(rule));
+    item.appendChild(label);
+    item.appendChild(delBtn);
+    list.appendChild(item);
+  }
 }
 
 function updatePermissionCount() {
@@ -919,29 +1146,67 @@ function renderDiffView(input) {
   }
 
   const filePath = input.file_path || '(unknown file)';
-  const oldLines = input.old_string.split('\\n');
-  const newLines = input.new_string.split('\\n');
 
-  let html = `<div class="diff-view"><div class="diff-file">文件: ${escHtml(filePath)}</div>`;
+  // 根据文件扩展名推断高亮语言
+  const ext = filePath.split('.').pop().toLowerCase();
+  const langMap = {
+    js: 'javascript', ts: 'typescript', jsx: 'javascript', tsx: 'typescript',
+    css: 'css', scss: 'scss', less: 'less',
+    html: 'xml', htm: 'xml', xml: 'xml', vue: 'xml',
+    py: 'python', rb: 'ruby', go: 'go', rs: 'rust',
+    java: 'java', kt: 'kotlin', swift: 'swift',
+    json: 'json', yaml: 'yaml', yml: 'yaml', toml: 'ini',
+    md: 'markdown', sh: 'bash', bash: 'bash', zsh: 'bash',
+    sql: 'sql', php: 'php', cs: 'csharp', cpp: 'cpp', c: 'c',
+  };
+  const lang = langMap[ext] || 'plaintext';
 
-  // Simple line-by-line diff
-  const maxLen = Math.max(oldLines.length, newLines.length);
-  for (let i = 0; i < maxLen; i++) {
-    const oldLine = oldLines[i];
-    const newLine = newLines[i];
-
-    if (oldLine !== undefined && (newLine === undefined || oldLine !== newLine)) {
-      html += `<div class="diff-line removed">${escHtml(oldLine)}</div>`;
-    }
-    if (newLine !== undefined && (oldLine === undefined || oldLine !== newLine)) {
-      html += `<div class="diff-line added">${escHtml(newLine)}</div>`;
-    }
-    if (oldLine === newLine && oldLine !== undefined) {
-      html += `<div class="diff-line context">${escHtml(oldLine)}</div>`;
+  function highlightLine(line) {
+    if (!window.hljs || lang === 'plaintext') return escHtml(line);
+    try {
+      return hljs.highlight(line, { language: lang, ignoreIllegals: true }).value;
+    } catch(e) {
+      return escHtml(line);
     }
   }
 
-  html += '</div>';
+  // 使用 diff-match-patch 做精确 LCS 行级 diff
+  let diffs;
+  if (window.diff_match_patch) {
+    const dmp = new diff_match_patch();
+    const a = dmp.diff_linesToChars_(input.old_string, input.new_string);
+    const linesDiff = dmp.diff_main(a.chars1, a.chars2, false);
+    dmp.diff_charsToLines_(linesDiff, a.lineArray);
+    dmp.diff_cleanupSemantic(linesDiff);
+    diffs = linesDiff;
+  } else {
+    // fallback: 简单行对比
+    diffs = [[-1, input.old_string], [1, input.new_string]];
+  }
+
+  let html = `<div class="diff-view">`;
+  html += `<div class="diff-file"><span class="diff-file-icon">📄</span>${escHtml(filePath)}</div>`;
+  html += `<div class="diff-body">`;
+
+  let lineNum = 1;
+  for (const [op, text] of diffs) {
+    const lines = text.split('\n');
+    const effectiveLines = lines[lines.length - 1] === '' ? lines.slice(0, -1) : lines;
+
+    for (const line of effectiveLines) {
+      if (op === 0) {
+        html += `<div class="diff-line context"><span class="diff-ln">${lineNum}</span><span class="diff-prefix"> </span><code>${highlightLine(line)}</code></div>`;
+        lineNum++;
+      } else if (op === -1) {
+        html += `<div class="diff-line removed"><span class="diff-ln"></span><span class="diff-prefix">-</span><code>${highlightLine(line)}</code></div>`;
+      } else if (op === 1) {
+        html += `<div class="diff-line added"><span class="diff-ln">${lineNum}</span><span class="diff-prefix">+</span><code>${highlightLine(line)}</code></div>`;
+        lineNum++;
+      }
+    }
+  }
+
+  html += '</div></div>';
   return html;
 }
 
@@ -1155,7 +1420,16 @@ function createMsgEl(role) {
   d.innerHTML=`<div class="role ${role==='assistant'?'streaming-dot':''}">${role==='user'?'你':'Claude'}</div><div class="content"></div>`;
   return d;
 }
-function appendUserMsg(t) { const e=createMsgEl('user'); e.querySelector('.content').textContent=t; messagesEl.appendChild(e); scrollBottom(); }
+function appendUserMsg(t, images) {
+  const e=createMsgEl('user'); const content=e.querySelector('.content');
+  if (images && images.length > 0) {
+    const imgHtml = images.map(img => `<img class="chat-image-thumb" src="data:${img.mediaType};base64,${img.data}" alt="图片" />`).join('');
+    content.innerHTML = imgHtml + escHtml(t);
+  } else {
+    content.textContent = t;
+  }
+  messagesEl.appendChild(e); scrollBottom();
+}
 function appendSystemMsg(t,type) {
   const d=document.createElement('div'); d.className='msg assistant';
   d.style.borderColor=type==='error'?'var(--red)':'var(--orange)';
@@ -1167,7 +1441,7 @@ function escHtml(s) { const d=document.createElement('div'); d.textContent=s||''
 
 // ========== Send / Abort / New ==========
 function send() {
-  const t=promptInput.value.trim(); if(!t||isStreaming) return;
+  const t=promptInput.value.trim(); if((!t && pendingImages.length===0)||isStreaming) return;
 
   // Intercept slash commands
   if (t.startsWith('/')) {
@@ -1227,15 +1501,18 @@ function send() {
 <user_message>${t}</user_message>`;
   }
 
-  appendUserMsg(t); promptInput.value='';
-  wsSend({ type:'claude-command', prompt:finalPrompt, sessionId, cwd:cwdInput.value||null,
+  const images = pendingImages.length > 0 ? pendingImages.map(img => ({ data: img.data, mediaType: img.mediaType })) : null;
+  appendUserMsg(t, images); promptInput.value='';
+  const baseUrl = localStorage.getItem('yxcode_baseUrl') || '';
+  wsSend({ type:'claude-command', prompt:finalPrompt, images, sessionId, cwd:cwdInput.value||null,
     model:selectedModel.value, permissionMode:permSelect.value,
-    apiKey });
+    apiKey, baseUrl });
+  pendingImages = []; renderImagePreviews();
   // 记住：女友模式只在新会话时生效一次，后续对话保持角色
   setStreaming(true);
 }
 function abort() { if(sessionId) wsSend({type:'abort-session',sessionId}); }
-function newSession() { sessionId=null; messagesEl.innerHTML=''; sessionInfo.textContent=''; finishStreaming(); setStreaming(false); renderSidebar(); }
+function newSession() { sessionId=null; messagesEl.innerHTML=''; sessionInfo.textContent=''; finishStreaming(); setStreaming(false); pendingImages=[]; renderImagePreviews(); renderSidebar(); }
 function setStreaming(v) {
   isStreaming=v; sendBtn.disabled=v; abortBtn.classList.toggle('hidden',!v); connStatus.className='status-dot '+(v?'busy':'online');
   if(v) showLoading(); else hideLoading();
@@ -1300,10 +1577,22 @@ sendBtn.addEventListener('click', send);
 abortBtn.addEventListener('click', abort);
 newBtn.addEventListener('click', newSession);
 
-// Drag-and-drop file path into chat input
+// Drag-and-drop file path / image into chat input
 promptInput.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
 promptInput.addEventListener('drop', (e) => {
   e.preventDefault();
+  // 处理拖入的图片文件
+  if (e.dataTransfer.files?.length) {
+    for (const file of e.dataTransfer.files) {
+      if (!file.type.startsWith('image/')) continue;
+      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) { appendSystemMsg(`不支持的图片格式: ${file.type}`, 'error'); continue; }
+      if (file.size > MAX_IMAGE_SIZE) { appendSystemMsg(`图片过大 (${(file.size/1024/1024).toFixed(1)}MB)，最大 5MB`, 'error'); continue; }
+      const reader = new FileReader();
+      reader.onload = () => { pendingImages.push({ data: reader.result.split(',')[1], mediaType: file.type, name: file.name }); renderImagePreviews(); };
+      reader.readAsDataURL(file);
+    }
+    if ([...e.dataTransfer.files].some(f => f.type.startsWith('image/'))) return;
+  }
   const path = e.dataTransfer.getData('text/plain');
   if(path) {
     const pos = promptInput.selectionStart || promptInput.value.length;
@@ -1313,6 +1602,40 @@ promptInput.addEventListener('drop', (e) => {
     promptInput.selectionStart = promptInput.selectionEnd = pos + path.length;
   }
 });
+
+// 粘贴图片到输入框
+promptInput.addEventListener('paste', (e) => {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (!item.type.startsWith('image/')) continue;
+    e.preventDefault();
+    const file = item.getAsFile();
+    if (!file) continue;
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) { appendSystemMsg(`不支持的图片格式: ${file.type}`, 'error'); continue; }
+    if (file.size > MAX_IMAGE_SIZE) { appendSystemMsg(`图片过大 (${(file.size/1024/1024).toFixed(1)}MB)，最大 5MB`, 'error'); continue; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      pendingImages.push({ data: reader.result.split(',')[1], mediaType: file.type, name: file.name || `pasted-${pendingImages.length+1}.png` });
+      renderImagePreviews();
+    };
+    reader.readAsDataURL(file);
+  }
+});
+
+// 图片预览渲染
+function renderImagePreviews() {
+  const bar = document.getElementById('imagePreviewBar');
+  if (pendingImages.length === 0) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.style.display = 'flex';
+  bar.innerHTML = pendingImages.map((img, i) => `
+    <div class="image-preview-item" data-index="${i}">
+      <img src="data:${img.mediaType};base64,${img.data}" alt="${escHtml(img.name)}" />
+      <button class="image-preview-remove" onclick="window._removeImage(${i})" title="移除图片">✕</button>
+    </div>
+  `).join('');
+}
+window._removeImage = function(index) { pendingImages.splice(index, 1); renderImagePreviews(); };
 
 // Input event handlers for slash commands and @ mentions
 promptInput.addEventListener('keydown', e => {
@@ -1361,6 +1684,68 @@ cwdInput.addEventListener('change', () => {
   fileListCache = null;
   fileListCwd = null;
 });
+
+// ========== Input Resize Handle ==========
+(function initInputResize() {
+  const handle = document.getElementById('inputResizeHandle');
+  const textarea = document.getElementById('promptInput');
+  if (!handle || !textarea) return;
+  let startY, startH, dragging = false;
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    dragging = true;
+    startY = e.clientY;
+    startH = textarea.offsetHeight;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const delta = startY - e.clientY;
+    const newH = Math.min(Math.max(startH + delta, 48), window.innerHeight * 0.6);
+    textarea.style.height = newH + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    try { localStorage.setItem('inputHeight', textarea.style.height); } catch(e) {}
+  });
+
+  // 恢复上次保存的高度
+  try {
+    const saved = localStorage.getItem('inputHeight');
+    if (saved) textarea.style.height = saved;
+  } catch(e) {}
+
+  // 触屏支持
+  handle.addEventListener('touchstart', (e) => {
+    dragging = true;
+    startY = e.touches[0].clientY;
+    startH = textarea.offsetHeight;
+    handle.classList.add('dragging');
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!dragging) return;
+    const delta = startY - e.touches[0].clientY;
+    const newH = Math.min(Math.max(startH + delta, 48), window.innerHeight * 0.6);
+    textarea.style.height = newH + 'px';
+  }, { passive: true });
+
+  document.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    try { localStorage.setItem('inputHeight', textarea.style.height); } catch(e) {}
+  });
+})();
 
 // ========== Sidebar / File Panel Toggle ==========
 sidebarToggle.addEventListener('click', () => sidebar.classList.toggle('collapsed'));
@@ -1681,6 +2066,11 @@ async function viewFile(filePath) {
 let fbCurrentPath = '';
 
 cwdBrowseBtn.addEventListener('click', () => openFolderBrowser(cwdInput.value || ''));
+cwdOpenBtn.addEventListener('click', () => {
+  const dir = cwdInput.value || '';
+  if (!dir) return;
+  fetch('/api/open-folder?path=' + encodeURIComponent(dir)).catch(() => {});
+});
 fbCloseBtn.addEventListener('click', closeFolderBrowser);
 fbCancelBtn.addEventListener('click', closeFolderBrowser);
 folderBrowser.addEventListener('click', e => { if(e.target === folderBrowser) closeFolderBrowser(); });

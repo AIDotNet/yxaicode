@@ -15,7 +15,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen" alt="Node.js 版本">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="许可证">
-  <img src="https://img.shields.io/badge/code%20lines-%3C4000-orange" alt="代码行数">
 </p>
 
 </div>
@@ -40,7 +39,7 @@
 
 ### 🎯 极简架构
 - Node.js + WebSocket + HTML/CSS/JS
-- 代码行数小于 4000 行
+- 无构建工具、无前端框架
 - 仅依赖 Node.js
 
 </td>
@@ -122,7 +121,7 @@ PORT=8080 yxai
 | 要求 | 版本 |
 |------|------|
 | Node.js | >= 22.0.0 |
-| Claude Code | 已安装（无需配置） |
+| Claude Code | 需前置安装（无需配置） |
 
 ---
 
