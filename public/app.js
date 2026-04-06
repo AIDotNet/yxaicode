@@ -1469,8 +1469,12 @@ function showPermission(msg) {
     : msg.input?.command || msg.input?.file_path || JSON.stringify(msg.input,null,2);
   const rule = getPermRule(msg.toolName, msg.input);
 
+  // ExitPlanMode 永远不自动放行，必须用户每次确认
+  const neverRememberTools = ['ExitPlanMode'];
+  const canAutoAllow = !neverRememberTools.includes(msg.toolName);
+
   // Check if this rule is already remembered
-  if (rule && rememberedPermissions.has(rule)) {
+  if (canAutoAllow && rule && rememberedPermissions.has(rule)) {
     console.log('[auto-allow]', rule);
     wsSend({ type:'permission-response', requestId:msg.requestId, allow:true });
     return;
@@ -1485,7 +1489,7 @@ function showPermission(msg) {
     </details>
     <div class="perm-btns">
       <button class="btn-allow" data-rid="${msg.requestId}" data-act="once">允许一次</button>
-      <button class="btn-allow-remember" data-rid="${msg.requestId}" data-act="remember" data-rule="${escAttr(rule||msg.toolName)}">允许并记住</button>
+      ${canAutoAllow ? `<button class="btn-allow-remember" data-rid="${msg.requestId}" data-act="remember" data-rule="${escAttr(rule||msg.toolName)}">允许并记住</button>` : ''}
       <button class="btn-deny" data-rid="${msg.requestId}" data-act="deny">拒绝</button>
     </div>`;
   permBanner.classList.remove('hidden');
@@ -1858,9 +1862,9 @@ promptInput.addEventListener('drop', (e) => {
   if(path) {
     const pos = promptInput.selectionStart || promptInput.value.length;
     const val = promptInput.value;
-    promptInput.value = val.slice(0, pos) + path + val.slice(pos);
+    promptInput.value = val.slice(0, pos) + '@' + path + ' ' + val.slice(pos);
     promptInput.focus();
-    promptInput.selectionStart = promptInput.selectionEnd = pos + path.length;
+    promptInput.selectionStart = promptInput.selectionEnd = pos + path.length + 2;
   }
 });
 
