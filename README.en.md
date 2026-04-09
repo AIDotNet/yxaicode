@@ -23,7 +23,7 @@
 
 ## ✨ Introduction
 
-A visual interaction interface based on **Node.js + WebSocket + HTML/CSS/JS**, allowing you to interact with Claude AI through a web interface.
+A visual interaction interface based on **Node.js / .NET 10 + WebSocket + HTML/CSS/JS**, allowing you to interact with Claude AI through a web interface.
 
 - Consistent capabilities with Claude Code
 - Perfect for transitioning from Trae, Cursor, conversational, and plugin-based programming to Claude Code
@@ -71,6 +71,32 @@ A visual interaction interface based on **Node.js + WebSocket + HTML/CSS/JS**, a
 </td>
 </tr>
 </table>
+
+---
+
+## 🟦 .NET / Azure / Microsoft Foundry Support
+
+In addition to the default Node.js implementation, this repository also includes a **.NET 10 backend host** located at `dotnet/src/YxAi.DotNetHost`. From an overall technical positioning perspective, @yxai/code can be presented as an AI visual development portal built on the **Microsoft Azure cloud + Microsoft Foundry (Azure AI Foundry) + C# / ASP.NET Core / .NET** ecosystem, making it suitable for integration, deployment, and further extension in Microsoft-centric environments.
+
+### Microsoft Stack Positioning
+
+- Supports **C# / ASP.NET Core / .NET 10** for hosting the Web API, static assets, and WebSocket services
+- Can be deployed on **Microsoft Azure** environments such as Azure App Service, Azure Container Apps, Azure VMs, and Kubernetes
+- Can connect to **Microsoft Foundry (Azure AI Foundry)** model services and enterprise AI gateways through the configurable `BaseUrl`
+- The full workflow—UI, session management, permission approval, file browsing, and streaming responses—can be positioned as an **Azure + .NET + Microsoft Foundry** solution for end-to-end delivery
+- Well suited as an AI coding portal, internal developer assistant, or showcase project for the **Microsoft / Azure / .NET** ecosystem
+
+### Run the .NET Host
+
+```bash
+dotnet run --project dotnet/src/YxAi.DotNetHost
+```
+
+### Showcase Value for Microsoft Ecosystem
+
+- Demonstrates both **Node.js** and **.NET** implementation paths in one project
+- Highlights engineering integration across **ASP.NET Core + WebSocket + Azure + Microsoft Foundry**
+- Suitable as a project reference for Microsoft MVP, Azure AI, and .NET ecosystem materials
 
 ---
 

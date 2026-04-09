@@ -23,7 +23,7 @@
 
 ## ✨ 简介
 
-一个基于 **Node.js + WebSocket + HTML/CSS/JS** 的可视化交互界面，让你可以通过 Web 界面与 Claude AI 进行交互。
+一个基于 **Node.js/.Net10 + WebSocket + HTML/CSS/JS** 的可视化交互界面，让你可以通过 Web 界面与 Claude AI 进行交互。
 
 - 能力与 Claude Code 一致
 - 适合从 Trae、Cursor、对话式、插件式编程方式过渡到 Claude Code
@@ -71,6 +71,32 @@
 </td>
 </tr>
 </table>
+
+---
+
+## 🟦 .NET / Azure / Microsoft Foundry 支持说明
+
+除了默认的 Node.js 版本外，仓库中还提供了 **.NET 10 后端宿主实现**，位于 `dotnet/src/YxAi.DotNetHost`。从项目整体技术定位上，可将 @yxai/code 作为一个基于 **Azure 微软云 + Microsoft Foundry（Azure AI Foundry）+ C# / ASP.NET Core / .NET** 生态落地的 AI 可视化开发门户，用于在微软技术体系内进行集成、部署与二次开发。
+
+### 微软技术栈落地方式
+
+- 支持使用 **C# / ASP.NET Core / .NET 10** 承载 Web API、静态文件与 WebSocket 服务
+- 支持在 **Azure 微软云** 环境中部署，如 Azure App Service、Azure Container Apps、Azure VM、Kubernetes 等场景
+- 支持通过可配置 `BaseUrl` 对接 **Microsoft Foundry（Azure AI Foundry）** 模型服务与企业级 AI 网关
+- 前端界面、会话管理、权限审批、文件浏览、流式响应等能力，可按 **Azure + .NET + Microsoft Foundry** 方案完成全项目落地
+- 适合作为 **Microsoft / Azure / .NET 技术生态** 的 AI Coding Portal、企业内部开发助手或对外演示项目
+
+### .NET 启动示例
+
+```bash
+dotnet run --project dotnet/src/YxAi.DotNetHost
+```
+
+### 微软生态展示价值
+
+- 展示项目同时覆盖 **Node.js** 与 **.NET** 双实现路径
+- 突出 **ASP.NET Core + WebSocket + Azure + Microsoft Foundry** 的工程整合能力
+- 适合用于微软 MVP、Azure AI、.NET 生态方向的项目案例说明
 
 ---
 
